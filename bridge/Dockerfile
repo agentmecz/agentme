@@ -9,13 +9,20 @@ FROM node:22-alpine3.21 AS builder
 # Set working directory
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
-COPY package*.json ./
+# Copy SDK first (bridge depends on it)
+COPY sdk/package*.json /sdk/
+RUN cd /sdk && npm ci
+COPY sdk/src/ /sdk/src/
+COPY sdk/tsconfig.json /sdk/
+RUN cd /sdk && npm run build
+
+# Install bridge dependencies
+COPY bridge/package*.json ./
 RUN npm ci
 
 # Copy source and build
-COPY tsconfig.json ./
-COPY src/ ./src/
+COPY bridge/tsconfig.json ./
+COPY bridge/src/ ./src/
 
 RUN npm run build
 

@@ -7,21 +7,19 @@
 # ==============================================================================
 # Build Stage - Rust compilation
 # ==============================================================================
-FROM rust:1.83-alpine AS builder
+FROM rust:latest AS builder
 
-# Install build dependencies for static linking
-RUN apk add --no-cache \
-    musl-dev \
-    pkgconfig \
-    openssl-dev \
-    openssl-libs-static \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
     cmake \
     make \
     perl \
-    linux-headers \
     clang \
     llvm \
-    git
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create build directory
 WORKDIR /build
@@ -29,20 +27,54 @@ WORKDIR /build
 # Copy manifests first for layer caching
 COPY Cargo.toml Cargo.lock ./
 
-# Create dummy src to compile dependencies
-RUN mkdir src && \
+# Create dummy source tree matching real module structure so cargo can
+# resolve all crate-level pub use re-exports during dependency compilation.
+# Each module is an empty file; main.rs is a no-op binary.
+RUN mkdir -p src benches && \
+    for mod in api arbitration circuit_breaker config contract did discovery \
+               error events metrics multichain network persistence plugin \
+               rate_limit search trust trust_cache; do \
+        echo "" > src/${mod}.rs; \
+    done && \
     echo "fn main() {}" > src/main.rs && \
-    echo "pub fn lib() {}" > src/lib.rs
+    echo "fn main() {}" > benches/p2p_benchmarks.rs
 
-# Build dependencies (cached layer)
-RUN cargo build --release && \
-    rm -rf src target/release/agentmesh* target/release/deps/agentmesh*
+# Generate a minimal lib.rs that declares all modules (empty) but skips
+# pub-use re-exports, so cargo compiles all dependencies without needing
+# real source code.
+RUN printf '%s\n' \
+    'pub mod api;' \
+    'pub mod arbitration;' \
+    'pub mod circuit_breaker;' \
+    'pub mod config;' \
+    'pub mod contract;' \
+    'pub mod did;' \
+    'pub mod discovery;' \
+    'pub mod error;' \
+    'pub mod events;' \
+    'pub mod metrics;' \
+    'pub mod multichain;' \
+    'pub mod network;' \
+    'pub mod persistence;' \
+    'pub mod plugin;' \
+    'pub mod rate_limit;' \
+    'pub mod search;' \
+    'pub mod trust;' \
+    'pub mod trust_cache;' \
+    > src/lib.rs
 
-# Copy actual source
+# Build dependencies only (cached layer)
+RUN cargo build --release 2>/dev/null || true && \
+    rm -rf src benches target/release/.fingerprint/agentmesh* \
+    target/release/agentmesh* target/release/deps/agentmesh* \
+    target/release/deps/libagentmesh*
+
+# Copy actual source and benchmarks
 COPY src/ ./src/
+COPY benches/ ./benches/
 
 # Build the application
-RUN cargo build --release --locked
+RUN cargo build --release
 
 # Verify the binary exists
 RUN ls -la target/release/agentmesh
@@ -50,17 +82,19 @@ RUN ls -la target/release/agentmesh
 # ==============================================================================
 # Production Stage - Minimal runtime
 # ==============================================================================
-FROM alpine:3.21 AS production
+FROM debian:trixie-slim AS production
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libgcc \
-    tini
+    libssl3 \
+    tini \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 # Security: Create non-root user and group
-RUN addgroup -g 1001 -S agentmesh && \
-    adduser -u 1001 -S agentmesh -G agentmesh
+RUN groupadd -g 1001 agentmesh && \
+    useradd -u 1001 -g agentmesh -s /bin/false agentmesh
 
 # Create directories
 RUN mkdir -p /app/data /app/config && \
@@ -71,9 +105,6 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /build/target/release/agentmesh ./
-
-# Copy default configuration (optional)
-# COPY config/default.toml ./config/
 
 # Set ownership
 RUN chown agentmesh:agentmesh ./agentmesh && \
@@ -103,7 +134,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget -qO- http://localhost:8080/health || exit 1
 
 # Use tini as init system for proper signal handling
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Start the node
-CMD ["./agentmesh"]
+CMD ["./agentmesh", "start"]
