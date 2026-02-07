@@ -12,6 +12,7 @@ import type { AgentMeshClient } from './client.js';
 import { didToHash } from './client.js';
 import { EscrowStateNames } from './types.js';
 import { parseUSDC, formatUSDC, toUnixTimestamp } from './utils.js';
+import { ERC20_ABI } from './abis.js';
 
 // =============================================================================
 // ABI Fragments
@@ -118,29 +119,6 @@ const ESCROW_ABI = [
       { name: 'amount', type: 'uint256', indexed: false },
       { name: 'deadline', type: 'uint256', indexed: false },
     ],
-  },
-] as const;
-
-const ERC20_ABI = [
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-  {
-    name: 'allowance',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
 

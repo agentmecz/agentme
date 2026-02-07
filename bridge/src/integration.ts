@@ -4,6 +4,7 @@
  * Handles automatic registration and announcement to the AgentMesh network.
  */
 
+import { createHash } from 'crypto';
 import type { AgentConfig } from './types.js';
 import { IPFSService } from './ipfs.js';
 import { RegistrationError, type Result, success, failure } from './errors.js';
@@ -13,6 +14,8 @@ import type {
   CapabilityCard,
   Skill,
   AgentMeshConfig,
+  AgentMeshClient,
+  DiscoveryClient,
 } from '@agentmesh/sdk';
 
 /**
@@ -45,8 +48,8 @@ export class AgentMeshIntegration {
   private readonly agentConfig: AgentConfig;
   private readonly integrationConfig: IntegrationConfig;
   private readonly did: string;
-  private client: any = null;
-  private discovery: any = null;
+  private client: AgentMeshClient | null = null;
+  private discovery: DiscoveryClient | null = null;
   private ipfsService: IPFSService;
   private connected = false;
 
@@ -93,24 +96,19 @@ export class AgentMeshIntegration {
    */
   private generateDID(privateKey: string): string {
     // In a real implementation, we'd use viem to derive the address
-    // For now, use a simple hash of the key
-    const hash = this.simpleHash(privateKey);
+    // For now, use a cryptographic hash of the key
+    const hash = this.secureHash(privateKey);
     return `did:agentmesh:base:${hash}`;
   }
 
   /**
-   * Simple hash function for DID generation.
-   * In production, this would use proper key derivation.
+   * Cryptographic hash function for DID generation.
+   * Uses SHA-256, truncated to 20 bytes (Ethereum address length).
    */
-  private simpleHash(input: string): string {
-    let hash = 0;
-    for (let i = 0; i < input.length; i++) {
-      const char = input.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    // Return as hex-like string starting with 0x
-    return '0x' + Math.abs(hash).toString(16).padStart(40, '0');
+  private secureHash(input: string): string {
+    const hash = createHash('sha256').update(input).digest('hex');
+    // Take first 40 hex chars (20 bytes) to match Ethereum address format
+    return '0x' + hash.slice(0, 40);
   }
 
   /**
@@ -228,8 +226,8 @@ export class AgentMeshIntegration {
     try {
       await this.ensureConnected();
 
-      // Check if already registered
-      const existingAgent = await this.client.getAgent(this.did);
+      // Check if already registered (client guaranteed non-null after ensureConnected)
+      const existingAgent = await this.client!.getAgent(this.did);
       if (existingAgent && existingAgent.isActive) {
         console.log(`[Integration] Agent already registered: ${this.did}`);
         // Return success with isNew=false to indicate already registered
@@ -260,7 +258,7 @@ export class AgentMeshIntegration {
         );
       }
 
-      const txHash = await this.client.registerAgent(card, capabilityCardCID);
+      const txHash = await this.client!.registerAgent(card, capabilityCardCID);
       console.log(`[Integration] Agent registered: ${txHash}`);
 
       return success({ txHash, isNew: true });
@@ -301,7 +299,7 @@ export class AgentMeshIntegration {
     await this.ensureConnected();
 
     const card = this.createCapabilityCard(endpoint);
-    await this.discovery.announce(card);
+    await this.discovery!.announce(card);
 
     console.log(`[Integration] Announced to P2P network: ${this.did}`);
   }
@@ -315,7 +313,7 @@ export class AgentMeshIntegration {
     }
 
     await this.ensureConnected();
-    await this.discovery.unannounce(this.did);
+    await this.discovery!.unannounce(this.did);
 
     console.log(`[Integration] Removed from P2P network: ${this.did}`);
   }

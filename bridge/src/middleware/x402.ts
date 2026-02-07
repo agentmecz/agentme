@@ -25,7 +25,8 @@ export function _resetUsedNonces(): void {
 }
 
 // Clean expired nonces every 5 minutes
-setInterval(() => {
+// unref() allows the process to exit if this is the only timer remaining
+const nonceCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - 5 * 60 * 1000;
   for (const [nonce, timestamp] of usedNonces.entries()) {
     if (timestamp < cutoff) {
@@ -33,6 +34,7 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+nonceCleanupTimer.unref();
 
 /**
  * x402 PaymentRequirement object
@@ -74,6 +76,14 @@ export interface PaymentPayload {
   timestamp: number;
   /** Nonce for replay protection */
   nonce: string;
+}
+
+/**
+ * Express Request augmented with x402 payment data.
+ * Middleware attaches the validated payment to the request object.
+ */
+export interface X402Request extends Request {
+  x402Payment?: PaymentPayload;
 }
 
 /**
@@ -370,7 +380,7 @@ export function createX402Middleware(config: X402Config) {
     }
 
     // Payment valid - attach to request and continue
-    (req as any).x402Payment = payment;
+    (req as X402Request).x402Payment = payment;
     next();
   };
 }

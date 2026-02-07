@@ -132,10 +132,9 @@ const ESCROW_ABI = [
  */
 export class EscrowClient {
   private readonly config: EscrowConfig;
-  // Using 'any' to avoid viem's complex generics
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- viem's chain-parameterized generics are impractical to thread through
   private readonly publicClient: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- viem's chain-parameterized generics are impractical to thread through
   private readonly walletClient?: any;
   private readonly account?: ReturnType<typeof privateKeyToAccount>;
 
@@ -169,12 +168,12 @@ export class EscrowClient {
    */
   async getEscrowResult(escrowId: bigint): Promise<Result<Escrow, EscrowNotFoundError | EscrowOperationError>> {
     try {
-      const result = (await this.publicClient.readContract({
+      const result = await this.publicClient.readContract({
         address: this.config.escrowAddress,
         abi: ESCROW_ABI,
         functionName: 'getEscrow',
         args: [escrowId],
-      })) as any;
+      });
 
       // Check if escrow exists (id will be 0 if not found)
       if (result.id === 0n) {

@@ -404,10 +404,4 @@ contract StreamingPayments is IStreamingPayments, AccessControlEnumerable, Reent
 
         return stream.endTime;
     }
-
-    /// @dev Get remaining balance at cancellation
-    function _getRemainingBalance(uint256 streamId) internal view returns (uint256) {
-        Stream storage stream = _streams[streamId];
-        return stream.depositAmount - stream.withdrawnAmount;
-    }
 }

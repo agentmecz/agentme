@@ -17,6 +17,7 @@ import type { AgentMeshClient } from './client.js';
 import { didToHash } from './client.js';
 import { BASIS_POINTS } from './types.js';
 import { parseUSDC, formatUSDC } from './utils.js';
+import { ERC20_ABI } from './abis.js';
 
 // =============================================================================
 // ABI Fragments
@@ -136,29 +137,6 @@ const TRUST_REGISTRY_ABI = [
     stateMutability: 'nonpayable',
     inputs: [{ name: 'endorseeDid', type: 'bytes32' }],
     outputs: [],
-  },
-] as const;
-
-const ERC20_ABI = [
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-  {
-    name: 'allowance',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
 

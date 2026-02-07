@@ -43,7 +43,7 @@ export {
   createTestPaymentPayload,
   X402_HEADERS,
 } from './middleware/index.js';
-export type { X402Config, PaymentRequirement, PaymentPayload } from './middleware/index.js';
+export type { X402Config, X402Request, PaymentRequirement, PaymentPayload } from './middleware/index.js';
 
 // AI Arbitration (Tier 2 Dispute Resolution)
 export { AIArbitrationService } from './ai-arbitration.js';

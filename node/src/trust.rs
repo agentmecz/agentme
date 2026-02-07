@@ -415,15 +415,11 @@ impl TrustService {
             }
 
             // Get endorser's reputation
-            let endorser_reputation = if let Some(ref cache_guard) = cache {
-                if let Some(endorser_data) = cache_guard.get(&endorsement.endorser_did) {
-                    self.calculate_reputation(endorser_data)
-                } else {
-                    0.0
-                }
-            } else {
-                0.0
-            };
+            let endorser_reputation = cache
+                .as_ref()
+                .and_then(|c| c.get(&endorsement.endorser_did))
+                .map(|data| self.calculate_reputation(data))
+                .unwrap_or(0.0);
 
             // Calculate hop decay: 0.9^hop_distance
             let decay_factor = ENDORSEMENT_DECAY_PER_HOP.powi(endorsement.hop_distance as i32);

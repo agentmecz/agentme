@@ -322,10 +322,9 @@ const AIResponseSchema = z.object({
 export class AIArbitrationService {
   private readonly config: AIArbitrationConfig;
   private readonly claude: Anthropic;
-  // Using 'any' to avoid viem's complex generics
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- viem's chain-parameterized generics are impractical to thread through
   private readonly publicClient: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- viem's chain-parameterized generics are impractical to thread through
   private readonly walletClient: any;
   private readonly account: ReturnType<typeof privateKeyToAccount>;
 
@@ -617,12 +616,12 @@ Ensure clientPercentage + providerPercentage = 100.`;
    */
   async submitRuling(escrowId: bigint, ruling: AIArbitrationResult): Promise<`0x${string}`> {
     // Get escrow to know the amount
-    const escrow = (await this.publicClient.readContract({
+    const escrow = await this.publicClient.readContract({
       address: this.config.escrowAddress,
       abi: ESCROW_ABI,
       functionName: 'getEscrow',
       args: [escrowId],
-    })) as any;
+    });
 
     const providerShare = this.calculateProviderShare(
       escrow.amount,
