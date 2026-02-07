@@ -1,0 +1,235 @@
+name: Security
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    # Daily scan at 3 AM CET for newly discovered vulnerabilities
+    - cron: "0 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================================================
+  # Secret Detection - blocks PRs with hardcoded credentials
+  # ==========================================================================
+  secrets:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks - detect hardcoded secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196e88e9c30 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: true
+          GITLEAKS_ENABLE_SUMMARY: true
+
+  # ==========================================================================
+  # Dependency Audit - check for known vulnerabilities in dependencies
+  # ==========================================================================
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Node.js dependencies (SDK + Bridge)
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: "20"
+
+      - name: Audit SDK dependencies
+        working-directory: sdk
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Audit Bridge dependencies
+        working-directory: bridge
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # Rust dependencies
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+        continue-on-error: true
+
+      - name: Audit Rust dependencies
+        working-directory: node
+        run: cargo audit
+        continue-on-error: true
+
+  # ==========================================================================
+  # SAST - static analysis for common vulnerability patterns
+  # ==========================================================================
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858 # v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858 # v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858 # v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ==========================================================================
+  # Vibe Coding Patterns - catch AI-generated anti-patterns
+  # ==========================================================================
+  vibe-check:
+    name: Vibe Coding Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check for hardcoded private keys
+        run: |
+          echo "::group::Scanning for hardcoded private keys"
+          # Ethereum-style private keys (0x + 64 hex chars)
+          if grep -rn --include='*.ts' --include='*.js' --include='*.sol' --include='*.rs' \
+            -E '0x[0-9a-fA-F]{64}' \
+            --exclude-dir=node_modules --exclude-dir=target --exclude-dir=out \
+            --exclude='*.lock' --exclude='package-lock.json' \
+            . | grep -iv 'test\|mock\|fixture\|example\|keccak256\|selector\|topic\|hash\|0x0{64}'; then
+            echo "::error::Found potential hardcoded private keys in source files!"
+            exit 1
+          fi
+          echo "No hardcoded private keys found."
+          echo "::endgroup::"
+
+      - name: Check for hardcoded API keys and tokens
+        run: |
+          echo "::group::Scanning for API keys and tokens"
+          PATTERNS=(
+            'sk-[a-zA-Z0-9]{20,}'          # OpenAI-style keys
+            'sk_live_[a-zA-Z0-9]+'          # Stripe live keys
+            'AKIA[0-9A-Z]{16}'             # AWS access keys
+            'ghp_[a-zA-Z0-9]{36}'          # GitHub personal tokens
+            'ghs_[a-zA-Z0-9]{36}'          # GitHub server tokens
+            'xox[bpras]-[a-zA-Z0-9-]+'     # Slack tokens
+          )
+          FOUND=0
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -rn --include='*.ts' --include='*.js' --include='*.sol' --include='*.rs' --include='*.md' \
+              --exclude-dir=node_modules --exclude-dir=target --exclude-dir=out \
+              --exclude='*.lock' --exclude='package-lock.json' \
+              -E "$pattern" .; then
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "::error::Found potential hardcoded API keys or tokens!"
+            exit 1
+          fi
+          echo "No hardcoded API keys found."
+          echo "::endgroup::"
+
+      - name: Check for dangerous patterns in TypeScript/JavaScript
+        run: |
+          echo "::group::Scanning for dangerous code patterns"
+          ISSUES=0
+
+          # eval() usage
+          if grep -rn --include='*.ts' --include='*.js' \
+            --exclude-dir=node_modules --exclude-dir=dist \
+            -E '\beval\s*\(' .; then
+            echo "::warning::Found eval() usage - potential code injection risk"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          # innerHTML assignment (XSS risk)
+          if grep -rn --include='*.ts' --include='*.js' --include='*.tsx' --include='*.jsx' \
+            --exclude-dir=node_modules --exclude-dir=dist \
+            -E '\.innerHTML\s*=' .; then
+            echo "::warning::Found innerHTML assignment - potential XSS risk"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          # Disabled TLS verification
+          if grep -rn --include='*.ts' --include='*.js' --include='*.rs' \
+            --exclude-dir=node_modules --exclude-dir=target \
+            -E 'rejectUnauthorized:\s*false|NODE_TLS_REJECT_UNAUTHORIZED|danger_accept_invalid_certs' .; then
+            echo "::warning::Found disabled TLS verification"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          # SQL string concatenation (injection risk)
+          if grep -rn --include='*.ts' --include='*.js' \
+            --exclude-dir=node_modules --exclude-dir=dist \
+            -E "(SELECT|INSERT|UPDATE|DELETE|DROP).*\+.*(\"|'|\`)" . | grep -iv 'test\|mock\|comment'; then
+            echo "::warning::Found potential SQL injection via string concatenation"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          if [ "$ISSUES" -gt 0 ]; then
+            echo "::warning::Found $ISSUES potential security issues. Review required."
+          else
+            echo "No dangerous patterns found."
+          fi
+          echo "::endgroup::"
+
+      - name: Check for .env files in tracked files
+        run: |
+          echo "::group::Checking for committed .env files"
+          if git ls-files | grep -E '^(.*/)?\.env$' | grep -v '.example' | grep -v '.test'; then
+            echo "::error::Found .env files tracked by git! These may contain secrets."
+            exit 1
+          fi
+          echo "No .env files tracked by git."
+          echo "::endgroup::"
+
+      - name: Check Solidity security patterns
+        run: |
+          echo "::group::Scanning Solidity contracts"
+          ISSUES=0
+
+          # tx.origin usage (phishing vulnerability)
+          if grep -rn --include='*.sol' -E 'tx\.origin' contracts/src/; then
+            echo "::warning::Found tx.origin usage - potential phishing vulnerability"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          # selfdestruct usage
+          if grep -rn --include='*.sol' -E 'selfdestruct|suicide' contracts/src/; then
+            echo "::warning::Found selfdestruct usage - dangerous pattern"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          # delegatecall to untrusted
+          if grep -rn --include='*.sol' -E 'delegatecall' contracts/src/; then
+            echo "::warning::Found delegatecall usage - verify target is trusted"
+            ISSUES=$((ISSUES + 1))
+          fi
+
+          if [ "$ISSUES" -gt 0 ]; then
+            echo "::warning::Found $ISSUES Solidity security concerns. Review required."
+          else
+            echo "No Solidity security issues found."
+          fi
+          echo "::endgroup::"
