@@ -1,0 +1,39 @@
+
+# Build artifacts
+contracts/cache/
+contracts/out/
+contracts/foundry.lock
+node/target/
+node/.fastembed_cache/
+sdk/dist/
+sdk/node_modules/
+bridge/node_modules/
+bridge/dist/
+
+# Environment files (contain secrets)
+**/.env
+**/.env.local
+**/.env.test
+**/.env.*.local
+!.env.example
+
+# Broadcast (deployment transactions)
+contracts/broadcast/
+
+# Security audit reports (keep private)
+docs/security/SECURITY_AUDIT_*.md
+
+# OS files
+.DS_Store
+
+# Log files
+*.log
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+.nyc_output/

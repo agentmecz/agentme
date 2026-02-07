@@ -1,0 +1,49 @@
+# AgentMesh Node - Fly.io Configuration
+# Deploy: fly launch (first time) or fly deploy (updates)
+
+app = "agentmesh-node"
+primary_region = "fra"  # Frankfurt - good for EU
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  RUST_LOG = "info"
+  AGENTMESH_NETWORK = "testnet"
+  AGENTMESH_CHAIN_RPC = "https://sepolia.base.org"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false  # Keep running for P2P
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 500
+
+# P2P port for libp2p
+[[services]]
+  internal_port = 4001
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 4001
+
+# Health checks
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[mounts]
+  source = "agentmesh_data"
+  destination = "/app/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

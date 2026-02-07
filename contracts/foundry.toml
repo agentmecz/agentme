@@ -1,0 +1,38 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+ffi = false
+ast = true
+build_info = true
+extra_output = ["abi", "evm.bytecode"]
+
+# Formatter settings
+fmt = { line_length = 120, tab_width = 4, bracket_spacing = true }
+
+# Test settings
+fuzz = { runs = 256, max_test_rejects = 65536 }
+invariant = { runs = 256, depth = 15 }
+
+# Allow deployment scripts to write addresses to ../deployments/
+fs_permissions = [{ access = "read-write", path = "../deployments" }]
+
+# Gas reporting
+gas_reports = ["*"]
+
+[profile.ci]
+fuzz = { runs = 10000 }
+invariant = { runs = 1000, depth = 50 }
+
+[rpc_endpoints]
+base_mainnet = "https://mainnet.base.org"
+base_sepolia = "https://sepolia.base.org"
+localhost = "http://localhost:8545"
+
+[etherscan]
+base_mainnet = { key = "${BASESCAN_API_KEY}", url = "https://api.basescan.org/api" }
+base_sepolia = { key = "${BASESCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }

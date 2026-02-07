@@ -1,0 +1,2 @@
+# This directory contains Foundry dependencies
+# Run: forge install OpenZeppelin/openzeppelin-contracts --no-commit

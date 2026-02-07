@@ -1,0 +1,133 @@
+# AgentMesh Bridge - Docker Compose
+#
+# Runs the bridge in an isolated sandbox environment.
+# Uses security best practices: non-root user, read-only filesystem,
+# limited capabilities, and resource constraints.
+#
+# Usage:
+#   cp .env.example .env
+#   # Edit .env with your configuration
+#   docker compose up -d
+#
+# For development:
+#   docker compose --profile dev up
+
+services:
+  # ===========================================================================
+  # Production Bridge Service
+  # ===========================================================================
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: agentmesh-bridge
+    restart: unless-stopped
+
+    # Security: Run as non-root user (matches Dockerfile USER)
+    user: "1001:1001"
+
+    # Environment from .env file
+    env_file:
+      - .env
+
+    # Override environment variables if needed
+    environment:
+      - NODE_ENV=production
+      - WORKSPACE_DIR=/workspace
+
+    # Port mapping
+    ports:
+      - "${BRIDGE_PORT:-3402}:3402"
+
+    # Volumes
+    volumes:
+      # Workspace for Claude Code tasks (read-write)
+      - ${WORKSPACE_DIR:-./workspace}:/workspace:rw
+      # Optional: Mount Claude CLI config from host
+      # - ~/.config/claude-code:/home/agentmesh/.config/claude-code:ro
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+
+    # Writable directories for the app (tmpfs for security)
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3402/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # Development Service (with hot-reload)
+  # ===========================================================================
+  bridge-dev:
+    profiles:
+      - dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: agentmesh-bridge-dev
+
+    env_file:
+      - .env
+
+    environment:
+      - NODE_ENV=development
+      - WORKSPACE_DIR=/workspace
+
+    ports:
+      - "${BRIDGE_PORT:-3402}:3402"
+
+    volumes:
+      # Mount source for hot-reload
+      - ./src:/app/src:ro
+      - ./package.json:/app/package.json:ro
+      # Workspace
+      - ${WORKSPACE_DIR:-./workspace}:/workspace:rw
+
+    working_dir: /app
+    command: ["npx", "tsx", "watch", "src/cli.ts"]
+
+# ===========================================================================
+# Named Volumes (optional - for persistent data)
+# ===========================================================================
+volumes:
+  workspace:
+    driver: local
+
+# ===========================================================================
+# Networks (optional - for multi-service setups)
+# ===========================================================================
+networks:
+  default:
+    name: agentmesh
+    driver: bridge

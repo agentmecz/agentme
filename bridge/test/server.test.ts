@@ -1,0 +1,208 @@
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import request from 'supertest';
+import { BridgeServer } from '../src/server.js';
+import { AgentConfig } from '../src/types.js';
+
+const testConfig: AgentConfig = {
+  name: 'test-agent',
+  description: 'Test agent for unit tests',
+  skills: ['coding', 'debugging'],
+  pricePerTask: 0.01,
+  privateKey: '0x1234567890abcdef',
+  workspaceDir: '/tmp/test-workspace',
+  allowedCommands: ['claude'],
+  taskTimeout: 60,
+};
+
+describe('BridgeServer', () => {
+  let server: BridgeServer;
+  let app: any;
+
+  beforeAll(async () => {
+    server = new BridgeServer(testConfig);
+    // Access the express app for testing
+    app = (server as any).app;
+  });
+
+  afterAll(async () => {
+    await server.stop();
+  });
+
+  describe('GET /health', () => {
+    it('returns ok status', async () => {
+      const res = await request(app).get('/health');
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+    });
+
+    it('returns agent name', async () => {
+      const res = await request(app).get('/health');
+
+      expect(res.body.agent).toBe('test-agent');
+    });
+
+    it('does not expose pending tasks count', async () => {
+      const res = await request(app).get('/health');
+
+      expect(res.body.pendingTasks).toBeUndefined();
+    });
+  });
+
+  describe('GET /.well-known/agent.json', () => {
+    it('returns capability card with agent name', async () => {
+      const res = await request(app).get('/.well-known/agent.json');
+
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe('test-agent');
+    });
+
+    it('returns capability card with description', async () => {
+      const res = await request(app).get('/.well-known/agent.json');
+
+      expect(res.body.description).toBe('Test agent for unit tests');
+    });
+
+    it('returns capability card with skills', async () => {
+      const res = await request(app).get('/.well-known/agent.json');
+
+      expect(res.body.skills).toEqual(['coding', 'debugging']);
+    });
+
+    it('returns pricing info', async () => {
+      const res = await request(app).get('/.well-known/agent.json');
+
+      expect(res.body.pricing.model).toBe('per-task');
+      expect(res.body.pricing.price).toBe('0.01 USDC');
+    });
+
+    it('returns endpoints', async () => {
+      const res = await request(app).get('/.well-known/agent.json');
+
+      expect(res.body.endpoints.task).toBe('/task');
+      expect(res.body.endpoints.ws).toBe('/ws');
+    });
+
+    it('returns version', async () => {
+      const res = await request(app).get('/.well-known/agent.json');
+
+      expect(res.body.version).toBe('1.0.0');
+    });
+  });
+
+  describe('POST /task', () => {
+    it('rejects invalid task without taskId', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({ type: 'prompt', prompt: 'test', clientDid: 'did:test:123' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBeDefined();
+    });
+
+    it('rejects invalid task without type', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({ taskId: 'task-1', prompt: 'test', clientDid: 'did:test:123' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects invalid task without prompt', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({ taskId: 'task-1', type: 'prompt', clientDid: 'did:test:123' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects invalid task without clientDid', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({ taskId: 'task-1', type: 'prompt', prompt: 'test' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects invalid task type', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({ taskId: 'task-1', type: 'invalid', prompt: 'test', clientDid: 'did:test:123' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts valid task and returns acknowledgement', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({
+          taskId: 'task-valid-1',
+          type: 'prompt',
+          prompt: 'Write hello world',
+          clientDid: 'did:test:client',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.accepted).toBe(true);
+      expect(res.body.taskId).toBe('task-valid-1');
+    });
+
+    it('returns estimated time based on config timeout', async () => {
+      const res = await request(app)
+        .post('/task')
+        .send({
+          taskId: 'task-valid-2',
+          type: 'prompt',
+          prompt: 'Write hello world',
+          clientDid: 'did:test:client',
+        });
+
+      expect(res.body.estimatedTime).toBe(60);
+    });
+  });
+
+  describe('GET /task/:taskId', () => {
+    it('returns 404 for unknown task', async () => {
+      const res = await request(app).get('/task/unknown-task');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Task not found or completed');
+    });
+  });
+
+  describe('DELETE /task/:taskId', () => {
+    it('returns 404 for unknown task', async () => {
+      const res = await request(app).delete('/task/unknown-task');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Task not found');
+    });
+  });
+});
+
+// ========== H-6: Localhost Binding Tests ==========
+
+describe('BridgeServer localhost binding', () => {
+  it('binds to 127.0.0.1 by default', async () => {
+    const server = new BridgeServer({
+      ...testConfig,
+      rateLimit: { enabled: false },
+    });
+    await server.start(0);
+    const address = (server as any).server.address();
+    expect(address.address).toBe('127.0.0.1');
+    await server.stop();
+  });
+
+  it('accepts custom host via config', async () => {
+    const server = new BridgeServer({
+      ...testConfig,
+      rateLimit: { enabled: false },
+      host: '127.0.0.1',
+    });
+    await server.start(0);
+    const address = (server as any).server.address();
+    expect(address.address).toBe('127.0.0.1');
+    await server.stop();
+  });
+});

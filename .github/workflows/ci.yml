@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  # ==========================================================================
+  # Rust Node
+  # ==========================================================================
+  rust:
+    name: Rust Node
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_NET_RETRY: 10
+      RUSTUP_MAX_RETRIES: 10
+      SCCACHE_GHA_ENABLED: true
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+
+      - name: Cache cargo registry
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('node/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Check formatting
+        working-directory: node
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: node
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: node
+        run: cargo test --no-fail-fast
+
+  # ==========================================================================
+  # Solidity Contracts
+  # ==========================================================================
+  solidity:
+    name: Solidity Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@8789b3e21e6c11b2697f5eb56eddae542f746c10 # v1
+        with:
+          version: stable
+
+      - name: Check formatting
+        working-directory: contracts
+        run: forge fmt --check src/ test/ script/
+
+      - name: Build
+        working-directory: contracts
+        run: forge build
+
+      - name: Test
+        working-directory: contracts
+        run: forge test -vvv
+
+  # ==========================================================================
+  # TypeScript SDK
+  # ==========================================================================
+  typescript:
+    name: TypeScript SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: npm ci
+
+      - name: Lint
+        working-directory: sdk
+        run: npm run lint
+
+      - name: Type check
+        working-directory: sdk
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: sdk
+        run: npm run build
+
+      - name: Test
+        working-directory: sdk
+        run: npm test
+
+  # ==========================================================================
+  # Bridge (TypeScript - Claude Code worker)
+  # ==========================================================================
+  bridge:
+    name: Bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Install SDK dependencies
+        working-directory: sdk
+        run: npm ci
+
+      - name: Build SDK
+        working-directory: sdk
+        run: npm run build
+
+      - name: Install Bridge dependencies
+        working-directory: bridge
+        run: npm ci
+
+      - name: Lint
+        working-directory: bridge
+        run: npm run lint
+
+      - name: Build
+        working-directory: bridge
+        run: npm run build
+
+      - name: Test
+        working-directory: bridge
+        run: npm test

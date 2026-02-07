@@ -1,0 +1,121 @@
+# AgentMesh Node - Docker Compose for Local Development
+# Usage: docker-compose up -d
+services:
+  # ==========================================================================
+  # AgentMesh Node
+  # ==========================================================================
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentmesh-node:local
+    container_name: agentmesh-node
+    restart: unless-stopped
+
+    # Ports
+    ports:
+      - "8080:8080"   # HTTP API
+      - "4001:4001"   # P2P libp2p
+
+    # Environment variables
+    environment:
+      RUST_LOG: debug,agentmesh_node=trace
+      AGENTMESH_NETWORK: testnet
+      AGENTMESH_API_LISTEN: 0.0.0.0:8080
+      AGENTMESH_P2P_LISTEN: /ip4/0.0.0.0/tcp/4001
+      AGENTMESH_DATA_DIR: /app/data
+      AGENTMESH_CHAIN_RPC: https://sepolia.base.org
+      AGENTMESH_CHAIN_ID: "84532"
+      AGENTMESH_RATE_LIMIT_ENABLED: "true"
+      AGENTMESH_RATE_LIMIT_RPS: "100"
+      AGENTMESH_TRUST_CACHE_ENABLED: "true"
+      AGENTMESH_METRICS_ENABLED: "true"
+
+    # Persistent data volume
+    volumes:
+      - node-data:/app/data
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+    # Networking
+    networks:
+      - agentmesh
+
+  # ==========================================================================
+  # Prometheus (Optional - for metrics)
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: agentmesh-prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+
+    networks:
+      - agentmesh
+
+  # ==========================================================================
+  # Grafana (Optional - for dashboards)
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: agentmesh-grafana
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+    networks:
+      - agentmesh
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  agentmesh:
+    driver: bridge
+
+# ==========================================================================
+# Volumes
+# ==========================================================================
+volumes:
+  node-data:
+  prometheus-data:
+  grafana-data:

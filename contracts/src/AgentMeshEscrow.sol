@@ -1,0 +1,365 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "./interfaces/IAgentMeshEscrow.sol";
+import "./interfaces/ITrustRegistry.sol";
+
+/// @title AgentMeshEscrow - Escrow for Agent-to-Agent Transactions
+/// @notice Manages escrow for agent tasks with dispute resolution
+/// @dev Integrates with TrustRegistry for agent validation and reputation updates
+contract AgentMeshEscrow is IAgentMeshEscrow, AccessControlEnumerable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    // ============ Constants ============
+
+    /// @notice Role for resolving disputes
+    bytes32 public constant ARBITER_ROLE = keccak256("ARBITER_ROLE");
+
+    /// @notice Time after delivery before provider can auto-release
+    uint256 public constant AUTO_RELEASE_DELAY = 24 hours;
+
+    /// @notice Maximum deadline duration (90 days)
+    uint256 public constant MAX_DEADLINE_DURATION = 90 days;
+
+    // ============ State Variables ============
+
+    /// @notice Reference to the TrustRegistry contract
+    ITrustRegistry public immutable trustRegistry;
+
+    /// @notice Counter for generating escrow IDs
+    uint256 private _nextEscrowId;
+
+    /// @notice Mapping from escrow ID to Escrow struct
+    mapping(uint256 => Escrow) private _escrows;
+
+    /// @notice Allowed token addresses for escrow
+    mapping(address => bool) private _allowedTokens;
+
+    // ============ Errors ============
+
+    error InvalidTrustRegistry();
+    error InvalidAdmin();
+    error InvalidAmount();
+    error InvalidDeadline();
+    error InvalidProviderAddress();
+    error InvalidToken();
+    error InvalidProviderShare();
+    error AgentNotActive();
+    error EscrowNotFound();
+    error InvalidState();
+    error NotClient();
+    error NotProvider();
+    error NotParty();
+    error NotAuthorized();
+    error DeadlineNotPassed();
+    error AutoReleaseNotReady();
+    error TokenNotAllowed();
+    error DeadlineTooFar();
+    // ============ Events ============
+
+    /// @notice Emitted when reputation recording fails
+    event ReputationRecordingFailed(bytes32 indexed providerDid, bool success);
+
+    // ============ Constructor ============
+
+    /// @notice Initialize the AgentMeshEscrow contract
+    /// @param _trustRegistry Address of the TrustRegistry contract
+    /// @param _admin Address of the admin
+    constructor(address _trustRegistry, address _admin) {
+        if (_trustRegistry == address(0)) revert InvalidTrustRegistry();
+        if (_admin == address(0)) revert InvalidAdmin();
+
+        trustRegistry = ITrustRegistry(_trustRegistry);
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    }
+
+    // ============ Escrow Lifecycle Functions ============
+
+    /// @inheritdoc IAgentMeshEscrow
+    function createEscrow(
+        bytes32 clientDid,
+        bytes32 providerDid,
+        address providerAddress,
+        address token,
+        uint256 amount,
+        bytes32 taskHash,
+        uint256 deadline
+    ) external override returns (uint256 escrowId) {
+        // Validate inputs
+        if (amount == 0) revert InvalidAmount();
+        if (deadline <= block.timestamp) revert InvalidDeadline();
+        if (deadline > block.timestamp + MAX_DEADLINE_DURATION) revert DeadlineTooFar();
+        if (providerAddress == address(0)) revert InvalidProviderAddress();
+        if (token == address(0)) revert InvalidToken();
+        if (!_allowedTokens[token]) revert TokenNotAllowed();
+
+        // Verify both agents are active in TrustRegistry
+        if (!trustRegistry.isAgentActive(clientDid)) revert AgentNotActive();
+        if (!trustRegistry.isAgentActive(providerDid)) revert AgentNotActive();
+
+        // Verify caller owns the client DID
+        ITrustRegistry.AgentInfo memory clientAgent = trustRegistry.getAgent(clientDid);
+        if (clientAgent.owner != msg.sender) revert ClientDIDOwnershipMismatch();
+
+        // Verify providerAddress matches the owner of providerDid
+        ITrustRegistry.AgentInfo memory providerAgent = trustRegistry.getAgent(providerDid);
+        if (providerAgent.owner != providerAddress) revert ProviderDIDOwnershipMismatch();
+
+        // Prevent self-dealing
+        if (clientDid == providerDid) revert SelfDealingNotAllowed();
+        if (msg.sender == providerAddress) revert SelfDealingNotAllowed();
+
+        // Generate escrow ID
+        escrowId = ++_nextEscrowId;
+
+        // Create escrow record
+        _escrows[escrowId] = Escrow({
+            id: escrowId,
+            clientDid: clientDid,
+            providerDid: providerDid,
+            clientAddress: msg.sender,
+            providerAddress: providerAddress,
+            amount: amount,
+            token: token,
+            taskHash: taskHash,
+            outputHash: bytes32(0),
+            deadline: deadline,
+            state: State.AWAITING_DEPOSIT,
+            createdAt: block.timestamp,
+            deliveredAt: 0
+        });
+
+        emit EscrowCreated(escrowId, clientDid, providerDid, amount, deadline);
+    }
+
+    /// @inheritdoc IAgentMeshEscrow
+    function fundEscrow(uint256 escrowId) external override nonReentrant {
+        Escrow storage e = _getEscrow(escrowId);
+
+        // Verify caller is the client
+        if (msg.sender != e.clientAddress) revert NotClient();
+
+        // Verify state
+        if (e.state != State.AWAITING_DEPOSIT) revert InvalidState();
+
+        // Update state
+        e.state = State.FUNDED;
+
+        // Transfer tokens from client to contract
+        IERC20(e.token).safeTransferFrom(msg.sender, address(this), e.amount);
+
+        emit EscrowFunded(escrowId);
+    }
+
+    /// @inheritdoc IAgentMeshEscrow
+    function confirmDelivery(uint256 escrowId, bytes32 outputHash) external override {
+        Escrow storage e = _getEscrow(escrowId);
+
+        // Verify caller is the provider
+        if (msg.sender != e.providerAddress) revert NotProvider();
+
+        // Verify state
+        if (e.state != State.FUNDED) revert InvalidState();
+
+        // Update state
+        e.state = State.DELIVERED;
+        e.outputHash = outputHash;
+        e.deliveredAt = block.timestamp;
+
+        emit TaskDelivered(escrowId, outputHash);
+    }
+
+    /// @inheritdoc IAgentMeshEscrow
+    function releaseEscrow(uint256 escrowId) external override nonReentrant {
+        Escrow storage e = _getEscrow(escrowId);
+
+        // Verify state
+        if (e.state != State.DELIVERED) revert InvalidState();
+
+        // Check authorization
+        bool isClient = msg.sender == e.clientAddress;
+        bool isProvider = msg.sender == e.providerAddress;
+
+        if (!isClient && !isProvider) revert NotAuthorized();
+
+        // If provider is releasing, check auto-release delay
+        if (isProvider) {
+            if (block.timestamp < e.deliveredAt + AUTO_RELEASE_DELAY) {
+                revert AutoReleaseNotReady();
+            }
+        }
+
+        // Update state
+        e.state = State.RELEASED;
+
+        // Transfer tokens to provider
+        IERC20(e.token).safeTransfer(e.providerAddress, e.amount);
+
+        // Record successful transaction in TrustRegistry
+        _recordTransaction(e.providerDid, e.amount, true);
+
+        emit EscrowReleased(escrowId);
+    }
+
+    // ============ Dispute Functions ============
+
+    /// @inheritdoc IAgentMeshEscrow
+    function initiateDispute(
+        uint256 escrowId,
+        bytes calldata /* evidence */
+    )
+        external
+        override
+    {
+        Escrow storage e = _getEscrow(escrowId);
+
+        // Verify caller is a party to the escrow
+        if (msg.sender != e.clientAddress && msg.sender != e.providerAddress) {
+            revert NotParty();
+        }
+
+        // Verify state (can dispute when FUNDED or DELIVERED)
+        if (e.state != State.FUNDED && e.state != State.DELIVERED) {
+            revert InvalidState();
+        }
+
+        // Update state
+        e.state = State.DISPUTED;
+
+        emit DisputeInitiated(escrowId, msg.sender);
+    }
+
+    /// @inheritdoc IAgentMeshEscrow
+    function resolveDispute(uint256 escrowId, bool releaseToProvider, uint256 providerShare)
+        external
+        override
+        onlyRole(ARBITER_ROLE)
+        nonReentrant
+    {
+        Escrow storage e = _getEscrow(escrowId);
+
+        // Verify state
+        if (e.state != State.DISPUTED) revert InvalidState();
+
+        // Verify provider share doesn't exceed total
+        if (providerShare > e.amount) revert InvalidProviderShare();
+
+        // Calculate client share
+        uint256 clientShare = e.amount - providerShare;
+
+        // Update state based on resolution
+        if (releaseToProvider && providerShare == e.amount) {
+            e.state = State.RELEASED;
+        } else if (!releaseToProvider && providerShare == 0) {
+            e.state = State.REFUNDED;
+        } else {
+            // Split scenario - use RELEASED as final state
+            e.state = State.RELEASED;
+        }
+
+        // Transfer funds
+        if (providerShare > 0) {
+            IERC20(e.token).safeTransfer(e.providerAddress, providerShare);
+        }
+        if (clientShare > 0) {
+            IERC20(e.token).safeTransfer(e.clientAddress, clientShare);
+        }
+
+        // Record transaction outcome in TrustRegistry
+        // If provider got majority, record as successful; otherwise failed
+        bool successful = releaseToProvider && providerShare >= e.amount / 2;
+        _recordTransaction(e.providerDid, e.amount, successful);
+
+        emit DisputeResolved(escrowId, releaseToProvider, providerShare);
+    }
+
+    // ============ Timeout Functions ============
+
+    /// @inheritdoc IAgentMeshEscrow
+    function claimTimeout(uint256 escrowId) external override nonReentrant {
+        Escrow storage e = _getEscrow(escrowId);
+
+        // Verify caller is the client
+        if (msg.sender != e.clientAddress) revert NotClient();
+
+        // Verify state (can only timeout from FUNDED state)
+        if (e.state != State.FUNDED) revert InvalidState();
+
+        // Verify deadline has passed
+        if (block.timestamp <= e.deadline) revert DeadlineNotPassed();
+
+        // Update state
+        e.state = State.REFUNDED;
+
+        // Return tokens to client
+        IERC20(e.token).safeTransfer(e.clientAddress, e.amount);
+
+        // Record failed transaction in TrustRegistry
+        _recordTransaction(e.providerDid, e.amount, false);
+
+        emit EscrowRefunded(escrowId);
+    }
+
+    // ============ View Functions ============
+
+    /// @inheritdoc IAgentMeshEscrow
+    function getEscrow(uint256 escrowId) external view override returns (Escrow memory) {
+        return _escrows[escrowId];
+    }
+
+    // ============ Token Whitelist Functions ============
+
+    /// @notice Add a token to the allowed list
+    /// @param token Token address to allow
+    function addAllowedToken(address token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (token == address(0)) revert InvalidToken();
+        _allowedTokens[token] = true;
+    }
+
+    /// @notice Remove a token from the allowed list
+    /// @param token Token address to remove
+    function removeAllowedToken(address token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _allowedTokens[token] = false;
+    }
+
+    /// @notice Check if a token is allowed
+    /// @param token Token address to check
+    /// @return Whether the token is allowed
+    function isTokenAllowed(address token) external view returns (bool) {
+        return _allowedTokens[token];
+    }
+
+    // ============ Internal Functions ============
+
+    /// @notice Get escrow by ID, revert if not found
+    /// @param escrowId The escrow ID to look up
+    /// @return The Escrow storage reference
+    function _getEscrow(uint256 escrowId) internal view returns (Escrow storage) {
+        Escrow storage e = _escrows[escrowId];
+        if (e.id == 0) revert EscrowNotFound();
+        return e;
+    }
+
+    /// @notice Record a transaction in the TrustRegistry
+    /// @param agentDid The agent DID to record for
+    /// @param volumeUsd The transaction volume
+    /// @param successful Whether the transaction was successful
+    function _recordTransaction(bytes32 agentDid, uint256 volumeUsd, bool successful) internal {
+        // Convert token amount to USD cents (assuming 6 decimal token like USDC)
+        // 1 USDC = 100 cents, so amount / 10000 gives cents
+        uint256 volumeInCents = volumeUsd / 10000;
+
+        // Try to record the transaction; if it fails (e.g., no ORACLE_ROLE), continue silently
+        try trustRegistry.recordTransaction(agentDid, volumeInCents, successful) {
+        // Transaction recorded successfully
+        }
+        catch {
+            // Recording failed (likely missing ORACLE_ROLE), but don't block the escrow operation
+            emit ReputationRecordingFailed(agentDid, successful);
+        }
+    }
+}

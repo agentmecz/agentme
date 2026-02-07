@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+node/target
+node/.fastembed_cache
+contracts/broadcast
+contracts/cache
+contracts/out
+**/*.log
+**/node_modules
+**/.DS_Store
+deployments/*.json

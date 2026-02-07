@@ -1,0 +1,6 @@
+target
+.fastembed_cache
+.env*
+*.log
+.git
+docker-compose.yml

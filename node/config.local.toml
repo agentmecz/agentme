@@ -1,0 +1,29 @@
+# AgentMesh Node - Local Anvil Configuration
+# Used with: docker compose up / make local-up
+
+[identity]
+key_file = "node.key"
+
+[network]
+listen_addresses = ["/ip4/0.0.0.0/tcp/9000"]
+bootstrap_peers = []
+max_connections = 50
+
+[api]
+listen_address = "0.0.0.0:8080"
+cors_enabled = true
+cors_origins = ["*"]
+
+[trust]
+min_trust_score = 0.0
+require_stake = false
+min_stake = 0
+
+[blockchain]
+chain_id = 31337
+rpc_url = "http://anvil:8545"
+# Addresses are set via environment variables from deployments/local.json
+
+[node_info]
+name = "AgentMesh Local Node"
+description = "Local development node running against Anvil"

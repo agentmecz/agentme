@@ -1,0 +1,114 @@
+# AgentMesh Local Development Stack
+# Usage: docker compose up -d
+#
+# Services:
+#   - anvil: Local Ethereum node
+#   - deploy: Deploys contracts to Anvil (runs once)
+#   - node: P2P discovery node (Rust)
+#   - bridge: Claude Code worker bridge
+
+services:
+  # Local Ethereum Node (Foundry Anvil)
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:nightly-2024-02-01
+    container_name: agentmesh-anvil
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--chain-id", "31337"]
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  # Deploy contracts to Anvil (one-shot)
+  deploy:
+    image: ghcr.io/foundry-rs/foundry:nightly-2024-02-01
+    container_name: agentmesh-deploy
+    working_dir: /app/contracts
+    entrypoint: ["forge", "script", "script/DeployLocal.s.sol", "--rpc-url", "http://anvil:8545", "--broadcast"]
+    environment:
+      # Anvil default account #0 (publicly known, test only)
+      - DEPLOYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+    volumes:
+      - ./contracts:/app/contracts
+      - ./deployments:/app/deployments
+    depends_on:
+      anvil:
+        condition: service_healthy
+
+  # AgentMesh P2P Node
+  node:
+    build:
+      context: ./node
+      dockerfile: Dockerfile
+    container_name: agentmesh-node
+    ports:
+      - "8080:8080"   # HTTP API
+      - "4001:4001"   # P2P libp2p
+    environment:
+      - RUST_LOG=info
+      - AGENTMESH_NETWORK=local
+      - AGENTMESH_CHAIN_RPC=http://anvil:8545
+      - AGENTMESH_API_LISTEN=0.0.0.0:8080
+      - AGENTMESH_P2P_LISTEN=/ip4/0.0.0.0/tcp/4001
+    volumes:
+      - agentmesh_data:/app/data
+      - ./node/config.local.toml:/app/config.toml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      anvil:
+        condition: service_healthy
+      deploy:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  # Bridge (Claude Code worker)
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+    container_name: agentmesh-bridge
+    ports:
+      - "3402:3402"
+    environment:
+      # Anvil default account #0 (publicly known, test only)
+      - AGENT_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      - BRIDGE_PORT=3402
+      - WORKSPACE_DIR=/tmp/agentmesh-workspace
+      - ALLOWED_COMMANDS=claude,git,npm,node,npx,pnpm,yarn,cargo
+      - TASK_TIMEOUT=300
+      - AGENT_NAME=Local Test Agent
+      - AGENT_DESCRIPTION=Local development agent for E2E testing
+      - AGENT_SKILLS=typescript,javascript,python,rust,devops
+      - AGENT_PRICE_PER_TASK=1
+      - RPC_URL=http://anvil:8545
+      - CHAIN_ID=31337
+    volumes:
+      - ./deployments:/app/deployments:ro
+    depends_on:
+      anvil:
+        condition: service_healthy
+      deploy:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  agentmesh_data:

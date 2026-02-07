@@ -1,0 +1,102 @@
+import { z } from 'zod';
+
+// === Validation constants ===
+
+/** Maximum prompt length (100KB) to prevent DoS attacks */
+const MAX_PROMPT_LENGTH = 100000;
+
+/** Maximum taskId length to prevent buffer overflow */
+const MAX_TASK_ID_LENGTH = 128;
+
+/** Maximum files in context to prevent memory exhaustion */
+const MAX_FILES_COUNT = 100;
+
+/** Minimum task timeout in seconds */
+const MIN_TIMEOUT = 1;
+
+/** Maximum task timeout in seconds (1 hour) */
+const MAX_TIMEOUT = 3600;
+
+/** Default task timeout in seconds */
+const DEFAULT_TIMEOUT = 300;
+
+/**
+ * TaskId format validation regex.
+ * Only allows alphanumeric characters, dashes, and underscores.
+ * Prevents injection attacks and path traversal.
+ */
+const TASK_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+// === Task schemas ===
+
+export const TaskInputSchema = z.object({
+  taskId: z
+    .string()
+    .min(1, 'taskId is required')
+    .max(MAX_TASK_ID_LENGTH, `taskId must be at most ${MAX_TASK_ID_LENGTH} characters`)
+    .regex(
+      TASK_ID_PATTERN,
+      'taskId must contain only alphanumeric characters, dashes, and underscores'
+    ),
+  type: z.enum(['prompt', 'code-review', 'refactor', 'debug', 'custom']),
+  prompt: z
+    .string()
+    .min(1, 'prompt is required')
+    .max(MAX_PROMPT_LENGTH, `prompt must be at most ${MAX_PROMPT_LENGTH} characters (100KB)`),
+  context: z
+    .object({
+      repo: z.string().max(1000).optional(),
+      branch: z.string().max(500).optional(),
+      files: z
+        .array(z.string().max(1000))
+        .max(MAX_FILES_COUNT, `files array must have at most ${MAX_FILES_COUNT} items`)
+        .optional(),
+      workingDir: z.string().max(1000).optional(),
+    })
+    .optional(),
+  timeout: z
+    .number()
+    .min(MIN_TIMEOUT, `timeout must be at least ${MIN_TIMEOUT} second`)
+    .max(MAX_TIMEOUT, `timeout must be at most ${MAX_TIMEOUT} seconds (1 hour)`)
+    .default(DEFAULT_TIMEOUT),
+  clientDid: z.string().min(1).max(256).regex(/^did:[a-z]+:[a-zA-Z0-9._:-]+$/, 'Invalid DID format'),
+  escrowId: z.string().regex(/^\d+$/, 'escrowId must be numeric').optional(),
+});
+
+export type TaskInput = z.infer<typeof TaskInputSchema>;
+
+export const TaskResultSchema = z.object({
+  taskId: z.string(),
+  status: z.enum(['completed', 'failed', 'timeout']),
+  output: z.string().optional(),
+  error: z.string().optional(),
+  duration: z.number(),
+  filesChanged: z.array(z.string()).optional(),
+});
+
+export type TaskResult = z.infer<typeof TaskResultSchema>;
+
+// === Agent config ===
+
+export interface AgentConfig {
+  name: string;
+  description: string;
+  skills: string[];
+  pricePerTask: number; // USDC
+  privateKey: string;
+  workspaceDir: string;
+  allowedCommands: string[];
+  taskTimeout: number;
+}
+
+// === Bridge events ===
+
+export interface BridgeEvents {
+  'task:received': (task: TaskInput) => void;
+  'task:started': (taskId: string) => void;
+  'task:completed': (result: TaskResult) => void;
+  'task:failed': (taskId: string, error: Error) => void;
+  'agent:registered': (did: string) => void;
+  'agent:connected': () => void;
+  'agent:disconnected': () => void;
+}
