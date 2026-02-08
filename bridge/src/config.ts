@@ -8,7 +8,7 @@
  * @packageDocumentation
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 
@@ -162,6 +162,9 @@ export type AgentCardConfigInput = z.infer<typeof AgentCardConfigSchema>;
 /** Default filename for the agent card config */
 const DEFAULT_CONFIG_FILENAME = 'agent-card.config.json';
 
+/** Maximum allowed config file size (1 MB) */
+const MAX_CONFIG_FILE_SIZE = 1024 * 1024;
+
 // =============================================================================
 // Loader
 // =============================================================================
@@ -184,6 +187,13 @@ export function loadAgentCardConfig(
 
   if (!existsSync(resolvedPath)) {
     return {};
+  }
+
+  const fileSize = statSync(resolvedPath).size;
+  if (fileSize > MAX_CONFIG_FILE_SIZE) {
+    throw new Error(
+      `Agent card config at ${resolvedPath} is too large (${fileSize} bytes, max ${MAX_CONFIG_FILE_SIZE})`,
+    );
   }
 
   const raw = readFileSync(resolvedPath, 'utf-8');

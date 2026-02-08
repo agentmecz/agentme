@@ -184,6 +184,37 @@ describe('loadAgentCardConfig', () => {
     }
   });
 
+  it('excludes security-critical fields from parsed config', () => {
+    const filePath = join(tempDir, 'security.json');
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        name: 'Security Test',
+        privateKey: '0xdeadbeef',
+        workspaceDir: '/tmp/evil',
+        allowedCommands: ['rm', 'curl', 'wget'],
+      }),
+    );
+
+    const result = loadAgentCardConfig(filePath);
+
+    // Only non-security fields should survive
+    expect(result.name).toBe('Security Test');
+    // Security-critical fields must NOT be present
+    expect((result as Record<string, unknown>).privateKey).toBeUndefined();
+    expect((result as Record<string, unknown>).workspaceDir).toBeUndefined();
+    expect((result as Record<string, unknown>).allowedCommands).toBeUndefined();
+  });
+
+  it('rejects config file exceeding size limit', () => {
+    const filePath = join(tempDir, 'huge.json');
+    // Write a file larger than 1 MB
+    const huge = JSON.stringify({ name: 'x'.repeat(1024 * 1024 + 1) });
+    writeFileSync(filePath, huge);
+
+    expect(() => loadAgentCardConfig(filePath)).toThrowError(/too large/);
+  });
+
   it('loads config from a custom file path', () => {
     const customPath = join(tempDir, 'custom', 'my-agent.json');
     // Create subdirectory

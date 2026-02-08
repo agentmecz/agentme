@@ -11,11 +11,7 @@ import "./AgentToken.sol";
 /// @dev This is a read-only adapter. All write functions revert with ReadOnlyAdapter().
 ///      Maps between ERC-8004's uint256 agentId (AgentToken token IDs) and
 ///      AgentMesh's bytes32 didHash (TrustRegistry identifiers).
-contract ERC8004Adapter is
-    IERC8004IdentityRegistry,
-    IERC8004ReputationRegistry,
-    IERC8004ValidationRegistry
-{
+contract ERC8004Adapter is IERC8004IdentityRegistry, IERC8004ReputationRegistry, IERC8004ValidationRegistry {
     // ============ Errors ============
 
     /// @notice Reverted when a write operation is attempted on this read-only adapter
@@ -29,6 +25,13 @@ contract ERC8004Adapter is
 
     /// @notice Reverted when a zero address is provided to the constructor
     error ZeroAddress();
+
+    // ============ Metadata Key Hashes (compile-time constants) ============
+
+    bytes32 private constant KEY_DID_HASH = keccak256("didHash");
+    bytes32 private constant KEY_CAPABILITY_CID = keccak256("capabilityCID");
+    bytes32 private constant KEY_REGISTERED_AT = keccak256("registeredAt");
+    bytes32 private constant KEY_IS_ACTIVE = keccak256("isActive");
 
     // ============ State Variables ============
 
@@ -87,21 +90,21 @@ contract ERC8004Adapter is
 
         bytes32 keyHash = keccak256(bytes(metadataKey));
 
-        if (keyHash == keccak256("didHash")) {
+        if (keyHash == KEY_DID_HASH) {
             return abi.encode(didHash);
         }
 
-        if (keyHash == keccak256("capabilityCID")) {
+        if (keyHash == KEY_CAPABILITY_CID) {
             (, string memory capabilityCID,,) = agentToken.getAgentInfo(agentId);
             return abi.encode(capabilityCID);
         }
 
-        if (keyHash == keccak256("registeredAt")) {
+        if (keyHash == KEY_REGISTERED_AT) {
             ITrustRegistry.AgentInfo memory agentInfo = trustRegistry.getAgent(didHash);
             return abi.encode(agentInfo.registeredAt);
         }
 
-        if (keyHash == keccak256("isActive")) {
+        if (keyHash == KEY_IS_ACTIVE) {
             (,,, bool active) = agentToken.getAgentInfo(agentId);
             return abi.encode(active);
         }
@@ -143,12 +146,11 @@ contract ERC8004Adapter is
     /// @return count Total number of transactions
     /// @return summaryValue Reputation score as int128 (0-10000 basis points)
     /// @return summaryValueDecimals Always 2 (two decimal places)
-    function getSummary(
-        uint256 agentId,
-        address[] calldata clientAddresses,
-        string calldata tag1,
-        string calldata tag2
-    ) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals) {
+    function getSummary(uint256 agentId, address[] calldata clientAddresses, string calldata tag1, string calldata tag2)
+        external
+        view
+        returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals)
+    {
         // Suppress unused parameter warnings
         clientAddresses;
         tag1;
@@ -176,11 +178,11 @@ contract ERC8004Adapter is
     /// @return tag1 Always empty string
     /// @return tag2 Always empty string
     /// @return isRevoked Always false
-    function readFeedback(
-        uint256 agentId,
-        address clientAddress,
-        uint64 feedbackIndex
-    ) external pure returns (int128 value, uint8 valueDecimals, string memory tag1, string memory tag2, bool isRevoked) {
+    function readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)
+        external
+        pure
+        returns (int128 value, uint8 valueDecimals, string memory tag1, string memory tag2, bool isRevoked)
+    {
         // Suppress unused parameter warnings
         agentId;
         clientAddress;
@@ -251,11 +253,11 @@ contract ERC8004Adapter is
     /// @param tag Ignored (our system does not use validation tags)
     /// @return count 1 if trust data exists, 0 otherwise
     /// @return averageResponse Validation response code (0 = pending, 1 = valid, 2 = invalid)
-    function getSummary(
-        uint256 agentId,
-        address[] calldata validatorAddresses,
-        string calldata tag
-    ) external view returns (uint64 count, uint8 averageResponse) {
+    function getSummary(uint256 agentId, address[] calldata validatorAddresses, string calldata tag)
+        external
+        view
+        returns (uint64 count, uint8 averageResponse)
+    {
         validatorAddresses;
         tag;
 

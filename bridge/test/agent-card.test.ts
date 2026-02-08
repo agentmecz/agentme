@@ -355,6 +355,7 @@ describe('Agent Card endpoint (rich config)', () => {
     expect(res.body.trust.endorsements[0].endorser).toBe(
       'did:agentmesh:endorser-1',
     );
+    expect(res.body.trust.selfAsserted).toBe(true);
   });
 
   it('includes defaultInputModes and defaultOutputModes', async () => {

@@ -27,10 +27,7 @@ interface IERC8004IdentityRegistry {
     /// @param metadataKey The metadata key (non-indexed, for reading)
     /// @param metadataValue The raw metadata value
     event MetadataSet(
-        uint256 indexed agentId,
-        string indexed indexedMetadataKey,
-        string metadataKey,
-        bytes metadataValue
+        uint256 indexed agentId, string indexed indexedMetadataKey, string metadataKey, bytes metadataValue
     );
 
     // ============ Registration Functions ============
@@ -104,11 +101,7 @@ interface IERC8004ReputationRegistry {
     /// @param agentId The agent whose feedback was revoked
     /// @param clientAddress The client who revoked the feedback
     /// @param feedbackIndex The index of the revoked feedback
-    event FeedbackRevoked(
-        uint256 indexed agentId,
-        address indexed clientAddress,
-        uint64 feedbackIndex
-    );
+    event FeedbackRevoked(uint256 indexed agentId, address indexed clientAddress, uint64 feedbackIndex);
 
     // ============ View Functions ============
 
@@ -124,12 +117,10 @@ interface IERC8004ReputationRegistry {
     /// @return count Total number of matching feedback entries
     /// @return summaryValue Aggregated feedback score
     /// @return summaryValueDecimals Number of decimal places in summaryValue
-    function getSummary(
-        uint256 agentId,
-        address[] calldata clientAddresses,
-        string calldata tag1,
-        string calldata tag2
-    ) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals);
+    function getSummary(uint256 agentId, address[] calldata clientAddresses, string calldata tag1, string calldata tag2)
+        external
+        view
+        returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals);
 
     /// @notice Read a specific feedback entry
     /// @param agentId The agent to query
@@ -140,11 +131,10 @@ interface IERC8004ReputationRegistry {
     /// @return tag1 Primary tag
     /// @return tag2 Secondary tag
     /// @return isRevoked Whether this feedback has been revoked
-    function readFeedback(
-        uint256 agentId,
-        address clientAddress,
-        uint64 feedbackIndex
-    ) external view returns (int128 value, uint8 valueDecimals, string memory tag1, string memory tag2, bool isRevoked);
+    function readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)
+        external
+        view
+        returns (int128 value, uint8 valueDecimals, string memory tag1, string memory tag2, bool isRevoked);
 
     /// @notice Get all client addresses that have submitted feedback for an agent
     /// @param agentId The agent to query
@@ -189,10 +179,7 @@ interface IERC8004ValidationRegistry {
     /// @param requestHash Unique hash identifying the validation request
     /// @param tag Category tag for the validation
     event ValidationRequest(
-        address indexed requesterAddress,
-        uint256 indexed agentId,
-        bytes32 indexed requestHash,
-        string tag
+        address indexed requesterAddress, uint256 indexed agentId, bytes32 indexed requestHash, string tag
     );
 
     // ============ View Functions ============
@@ -227,11 +214,10 @@ interface IERC8004ValidationRegistry {
     /// @param tag Filter by category tag (empty string for all)
     /// @return count Total number of matching validations
     /// @return averageResponse Average response code across matching validations
-    function getSummary(
-        uint256 agentId,
-        address[] calldata validatorAddresses,
-        string calldata tag
-    ) external view returns (uint64 count, uint8 averageResponse);
+    function getSummary(uint256 agentId, address[] calldata validatorAddresses, string calldata tag)
+        external
+        view
+        returns (uint64 count, uint8 averageResponse);
 
     /// @notice Get all validation request hashes associated with an agent
     /// @param agentId The agent to query

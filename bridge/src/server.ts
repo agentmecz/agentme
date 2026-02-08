@@ -573,7 +573,7 @@ export class BridgeServer {
       card.authentication = cfg.authentication;
     }
     if (cfg.trust) {
-      card.trust = cfg.trust;
+      card.trust = { ...cfg.trust, selfAsserted: true };
     }
     if (cfg.defaultInputModes) {
       card.defaultInputModes = cfg.defaultInputModes;
