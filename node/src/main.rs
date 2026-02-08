@@ -157,7 +157,16 @@ async fn main() -> Result<()> {
 
             // 5. Create shared state for API server with DHT-enabled discovery
             let peer_count = Arc::new(AtomicU64::new(0));
-            let discovery = DiscoveryService::with_network(network.command_channel());
+            let discovery = match hybrid_search {
+                Some(hs) => {
+                    DiscoveryService::with_network_and_shared_search(network.command_channel(), hs)
+                }
+                None => DiscoveryService::with_network(network.command_channel()),
+            };
+            // Get the shared hybrid search reference from discovery so both
+            // the API semantic-search handler and discovery indexing use the
+            // same instance.
+            let shared_hybrid_search = discovery.hybrid_search();
             let app_state = AppState {
                 discovery: Arc::new(discovery),
                 trust: Arc::new(TrustService::new(
@@ -169,7 +178,7 @@ async fn main() -> Result<()> {
                 node_info: config.get_node_info(),
                 rate_limiter: Arc::new(RateLimitService::new(RateLimitConfig::default())),
                 metrics: Arc::new(MetricsService::new(MetricsConfig::default())),
-                hybrid_search,
+                hybrid_search: shared_hybrid_search,
             };
 
             // 6. Start HTTP API server in background with shared state

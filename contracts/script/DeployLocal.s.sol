@@ -90,11 +90,17 @@ contract DeployLocal is Script {
         // 3. Configure roles
         TrustRegistry registry = TrustRegistry(c.trustRegistry);
         NFTBoundReputation nftRep = NFTBoundReputation(c.nftReputation);
+        AgentMeshEscrow escrowContract = AgentMeshEscrow(c.escrow);
 
         registry.grantRole(registry.ORACLE_ROLE(), c.escrow);
         registry.grantRole(registry.ARBITER_ROLE(), c.disputes);
         nftRep.grantRole(nftRep.ORACLE_ROLE(), c.escrow);
         nftRep.grantRole(nftRep.ARBITER_ROLE(), c.disputes);
+
+        // Whitelist USDC as allowed payment token in escrow
+        escrowContract.addAllowedToken(c.usdc);
+        console.log("USDC whitelisted in escrow");
+
         console.log("Roles configured");
 
         vm.stopBroadcast();

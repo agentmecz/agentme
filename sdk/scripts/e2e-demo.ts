@@ -316,12 +316,14 @@ async function main() {
 
   // Agent identities
   const clientDid = `did:agentmesh:base:client${Date.now().toString(36)}`;
-  const providerDid = `did:agentmesh:base:provider${Date.now().toString(36)}`;
+  // Use bridge's provider DID if available (matches PROVIDER_DID env in bridge)
+  const bridgeProviderDid = process.env.PROVIDER_DID ?? `did:agentmesh:local:agent-001`;
+  const providerDid = bridgeProviderDid;
   const clientDidHash = didToHash(clientDid);
   const providerDidHash = didToHash(providerDid);
 
   console.log(`Client DID: ${clientDid}`);
-  console.log(`Provider DID: ${providerDid}`);
+  console.log(`Provider DID: ${providerDid} (matching bridge)`);
 
   // =========================================================================
   // Step 1: Check balances
@@ -365,8 +367,9 @@ async function main() {
     console.log(`  Gas used: ${clientReceipt.gasUsed}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('0x621197a9') || msg.includes('OwnerAlreadyHasAgent')) {
-      console.log('  Already registered (OwnerAlreadyHasAgent) - continuing');
+    if (msg.includes('0x621197a9') || msg.includes('OwnerAlreadyHasAgent')
+      || msg.includes('0xe098d3ee') || msg.includes('AgentAlreadyRegistered')) {
+      console.log('  Already registered - continuing');
     } else {
       throw err;
     }
@@ -402,8 +405,9 @@ async function main() {
       console.log(`  Status: ${providerReceipt.status}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('0x621197a9') || msg.includes('OwnerAlreadyHasAgent')) {
-        console.log('  Already registered (OwnerAlreadyHasAgent) - continuing');
+      if (msg.includes('0x621197a9') || msg.includes('OwnerAlreadyHasAgent')
+        || msg.includes('0xe098d3ee') || msg.includes('AgentAlreadyRegistered')) {
+        console.log('  Already registered - continuing');
       } else {
         throw err;
       }
@@ -432,25 +436,52 @@ async function main() {
       const health = await healthRes.json();
       console.log(`  Node healthy: ${JSON.stringify(health)}`);
 
-      // Try registering agent with node
+      // Try registering agent with node (A2A CapabilityCard format)
+      const capabilityCard = {
+        name: 'E2E Test Provider',
+        description: 'End-to-end test provider agent for code review and debugging',
+        url: BRIDGE_URL,
+        capabilities: [
+          { id: 'code-review', name: 'Code Review', description: 'Review code for bugs and improvements' },
+          { id: 'debugging', name: 'Debugging', description: 'Debug and fix code issues' },
+        ],
+        'x-agentmesh': {
+          did: providerDid,
+          trust_score: 0.5,
+          payment_methods: ['escrow', 'x402'],
+          pricing: { base_price: 1000000, currency: 'USDC', model: 'per_request' },
+        },
+      };
       const registerRes = await fetch(`${NODE_URL}/agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          did: providerDid,
-          name: 'E2E Test Provider',
-          description: 'End-to-end test provider agent',
-          skills: ['code-review', 'debugging'],
-          url: BRIDGE_URL,
-        }),
+        body: JSON.stringify(capabilityCard),
       });
       console.log(`  Register with node: ${registerRes.status}`);
+      if (!registerRes.ok) {
+        const errBody = await registerRes.text();
+        console.log(`  Register error: ${errBody}`);
+      }
 
-      // Search
-      const searchRes = await fetch(`${NODE_URL}/agents?q=code-review`);
+      // Brief delay for indexing
+      await sleep(500);
+
+      // Keyword search
+      const searchRes = await fetch(`${NODE_URL}/agents?q=review`);
       if (searchRes.ok) {
         const agents = await searchRes.json();
-        console.log(`  Found ${Array.isArray(agents) ? agents.length : 0} agent(s)`);
+        console.log(`  Keyword search: found ${Array.isArray(agents) ? agents.length : 0} agent(s)`);
+      }
+
+      // Semantic search
+      const semanticRes = await fetch(`${NODE_URL}/agents/semantic?q=help+me+review+my+code`);
+      if (semanticRes.ok) {
+        const results = await semanticRes.json();
+        console.log(`  Semantic search: found ${Array.isArray(results) ? results.length : 0} agent(s)`);
+        if (Array.isArray(results) && results.length > 0) {
+          const top = results[0];
+          console.log(`    Top result: ${top.card?.name ?? 'unknown'} (score: ${top.score?.toFixed(3) ?? 'N/A'})`);
+        }
       }
     } else {
       console.log('  Node not reachable, skipping discovery step');

@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
 use crate::error::{Error, Result};
@@ -141,7 +141,8 @@ pub struct DiscoveryService {
 
     /// Optional hybrid search for semantic search capabilities.
     /// Falls back to simple keyword matching if not available.
-    hybrid_search: Option<tokio::sync::RwLock<HybridSearch>>,
+    /// Wrapped in Arc so it can be shared with the API layer for semantic search queries.
+    hybrid_search: Option<Arc<tokio::sync::RwLock<HybridSearch>>>,
 }
 
 impl DiscoveryService {
@@ -176,7 +177,7 @@ impl DiscoveryService {
         Self {
             cache: RwLock::new(HashMap::new()),
             network_tx: None,
-            hybrid_search: Some(tokio::sync::RwLock::new(hybrid_search)),
+            hybrid_search: Some(Arc::new(tokio::sync::RwLock::new(hybrid_search))),
         }
     }
 
@@ -188,8 +189,32 @@ impl DiscoveryService {
         Self {
             cache: RwLock::new(HashMap::new()),
             network_tx: Some(network_tx),
-            hybrid_search: Some(tokio::sync::RwLock::new(hybrid_search)),
+            hybrid_search: Some(Arc::new(tokio::sync::RwLock::new(hybrid_search))),
         }
+    }
+
+    /// Create a discovery service with a shared HybridSearch instance.
+    ///
+    /// Use this when the same HybridSearch must be accessible from both
+    /// the discovery service (for indexing on register) and the API layer
+    /// (for semantic search queries).
+    pub fn with_network_and_shared_search(
+        network_tx: mpsc::Sender<SwarmCommand>,
+        hybrid_search: Arc<tokio::sync::RwLock<HybridSearch>>,
+    ) -> Self {
+        Self {
+            cache: RwLock::new(HashMap::new()),
+            network_tx: Some(network_tx),
+            hybrid_search: Some(hybrid_search),
+        }
+    }
+
+    /// Return a shared reference to the hybrid search instance, if available.
+    ///
+    /// This allows the API layer to share the same search index that the
+    /// discovery service populates on registration.
+    pub fn hybrid_search(&self) -> Option<Arc<tokio::sync::RwLock<HybridSearch>>> {
+        self.hybrid_search.clone()
     }
 
     /// Check if semantic search is available.
