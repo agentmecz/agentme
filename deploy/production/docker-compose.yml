@@ -24,6 +24,7 @@ services:
     ports:
       - "127.0.0.1:3402:3402"
     environment:
+      - BRIDGE_HOST=0.0.0.0
       - NODE_ENV=production
       - API_ENDPOINT=http://node:8080
       - AGENT_PRIVATE_KEY=${BRIDGE_AGENT_PRIVATE_KEY}
