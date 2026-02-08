@@ -1,0 +1,39 @@
+services:
+  node:
+    image: ghcr.io/timutti/agentmesh-node:latest
+    command:
+      - ./agentmesh
+      - start
+      - --enable-semantic-search
+      - --api-addr
+      - "0.0.0.0:8080"
+      - --p2p-addr
+      - /ip4/0.0.0.0/tcp/4001
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:4001:4001"
+    volumes:
+      - agentmesh_data:/app/data
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    mem_limit: 2g
+
+  bridge:
+    image: ghcr.io/timutti/agentmesh-bridge:latest
+    ports:
+      - "127.0.0.1:3402:3402"
+    environment:
+      - NODE_ENV=production
+      - API_ENDPOINT=http://node:8080
+      - AGENT_PRIVATE_KEY=${BRIDGE_AGENT_PRIVATE_KEY}
+      - RPC_URL=https://sepolia.base.org
+      - CHAIN_ID=84532
+      - PROVIDER_DID=did:agentmesh:base-sepolia:agent-001
+    restart: unless-stopped
+    mem_limit: 1g
+    depends_on:
+      - node
+
+volumes:
+  agentmesh_data:

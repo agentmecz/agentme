@@ -25,6 +25,9 @@ agentmesh/
 │   │   ├── TrustRegistry.sol
 │   │   └── AgentMeshEscrow.sol
 │   └── test/
+├── deploy/              # Deployment configurations
+│   ├── k8s/             # Kubernetes manifests
+│   └── production/      # Production docker-compose, nginx, setup
 ├── node/                # Rust P2P node (libp2p)
 │   └── src/
 ├── sdk/                 # TypeScript SDK
