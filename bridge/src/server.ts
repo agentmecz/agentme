@@ -148,6 +148,9 @@ export class BridgeServer {
     this.config = config;
     this.app = express();
 
+    // Trust first proxy (nginx) for correct client IP in rate limiting and logs
+    this.app.set('trust proxy', 1);
+
     // Setup security headers with helmet
     this.setupSecurityHeaders();
 
