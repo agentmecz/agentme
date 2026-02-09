@@ -49,11 +49,17 @@ async function main() {
     : process.env.NODE_ENV === 'production';
   const apiToken = process.env.BRIDGE_API_TOKEN;
 
+  // CORS origins (comma-separated, defaults to localhost in dev)
+  const corsOrigins = process.env.BRIDGE_CORS_ORIGINS;
+
   const serverConfig: BridgeServerConfig = {
     ...config,
     host,
     requireAuth,
     apiToken,
+    cors: corsOrigins
+      ? { origins: corsOrigins.split(',').map((s) => s.trim()) }
+      : undefined,
   };
 
   // Optional escrow integration
