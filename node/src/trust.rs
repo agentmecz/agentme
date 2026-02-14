@@ -60,9 +60,9 @@ pub struct TrustWeights {
 impl Default for TrustWeights {
     fn default() -> Self {
         Self {
-            reputation: 0.4,
+            reputation: 0.5,
             stake: 0.3,
-            endorsements: 0.3,
+            endorsements: 0.2,
         }
     }
 }
@@ -771,9 +771,9 @@ mod tests {
         // Act
         let trust = service.get_trust(did).await.unwrap();
 
-        // Assert: composite with default weights (0.4, 0.3, 0.3)
+        // Assert: composite with default weights (0.5, 0.3, 0.2)
         // reputation = 1.0, stake = 1.0, endorsements = 1.0 (capped)
-        // score = 0.4 * 1.0 + 0.3 * 1.0 + 0.3 * 1.0 = 1.0
+        // score = 0.5 * 1.0 + 0.3 * 1.0 + 0.2 * 1.0 = 1.0
         assert!(
             trust.score > 0.9,
             "Full agent should have high trust score, got {}",
