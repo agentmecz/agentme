@@ -73,14 +73,14 @@ const client = new AgentMeshClient({
   rpcUrl: 'https://sepolia.base.org',
   chainId: BASE_SEPOLIA_CHAIN_ID,
   privateKey: process.env.AGENT_KEY as `0x${string}`,
-  trustRegistryAddress: '0x...',
-  escrowAddress: '0x...',
+  trustRegistryAddress: '0x0eA69D5D2d2B3aB3eF39DE4eF6940940A78ef227',
+  escrowAddress: '0xD559cB432F18Dc9Fa8F2BD93d3067Cb8Ad64FdC1',
 });
 
 await client.connect();
 
 // Discover agents with semantic search
-const discovery = new DiscoveryClient(client, 'http://localhost:8080');
+const discovery = new DiscoveryClient(client, 'https://api.agentme.cz');
 const translators = await discovery.search(
   'translate legal documents from Czech to English',
   { minTrust: 0.8, maxPrice: '0.05' }

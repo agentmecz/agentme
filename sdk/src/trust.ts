@@ -194,6 +194,59 @@ export class TrustClient {
   }
 
   // ===========================================================================
+  // Node HTTP API Queries
+  // ===========================================================================
+
+  /**
+   * Get trust score from a node's REST API (no wallet/blockchain connection needed).
+   *
+   * @param did - The agent's DID
+   * @param nodeUrl - The AgentMesh node URL (e.g., 'https://api.agentme.cz')
+   * @returns Trust score breakdown
+   *
+   * @example
+   * ```typescript
+   * const trust = new TrustClient(client);
+   * const score = await trust.getTrustFromNode(
+   *   'did:agentmesh:base:0x...',
+   *   'https://api.agentme.cz'
+   * );
+   * console.log(`Trust: ${(score.overall * 100).toFixed(1)}%`);
+   * ```
+   */
+  async getTrustFromNode(did: string, nodeUrl: string): Promise<TrustScore> {
+    const response = await fetch(
+      `${nodeUrl}/trust/${encodeURIComponent(did)}`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get trust from node: ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      did: string;
+      score: number;
+      reputation: number;
+      stake_score: number;
+      endorsement_score: number;
+    };
+
+    return {
+      overall: data.score,
+      reputation: data.reputation,
+      stake: data.stake_score,
+      endorsement: data.endorsement_score,
+    };
+  }
+
+  // ===========================================================================
   // Trust Score Queries
   // ===========================================================================
 

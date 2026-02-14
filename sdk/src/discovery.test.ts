@@ -142,10 +142,9 @@ describe('DiscoveryClient', () => {
     it('should build correct query parameters', async () => {
       discovery.setNodeUrl('https://node.example.com');
 
-      const mockResponse = { results: [] };
       (global.fetch as Mock).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockResponse,
+        json: async () => [],
       });
 
       await discovery.search('translate', {
@@ -160,7 +159,7 @@ describe('DiscoveryClient', () => {
       const call = (global.fetch as Mock).mock.calls[0]!;
       const url = new URL(call[0] as string);
 
-      expect(url.pathname).toBe('/api/v1/discovery/search');
+      expect(url.pathname).toBe('/agents/semantic');
       expect(url.searchParams.get('q')).toBe('translate');
       expect(url.searchParams.get('minTrust')).toBe('0.8');
       expect(url.searchParams.get('maxPrice')).toBe('0.10');
@@ -173,20 +172,46 @@ describe('DiscoveryClient', () => {
     it('should return discovery results', async () => {
       discovery.setNodeUrl('https://node.example.com');
 
-      const expectedResults = [
-        sampleDiscoveryResult('did:agentmesh:base:agent1'),
-        sampleDiscoveryResult('did:agentmesh:base:agent2'),
+      const nodeResults = [
+        {
+          did: 'did:agentmesh:base:agent1',
+          score: 0.9,
+          vector_score: 0.85,
+          keyword_score: 0.95,
+          card: {
+            name: 'Test Agent 1',
+            description: 'A test agent',
+            url: 'https://agent1.example.com',
+            capabilities: [{ id: 'translate', name: 'Translation' }],
+            agentmesh: { did: 'did:agentmesh:base:agent1', trust_score: 0.85 },
+          },
+        },
+        {
+          did: 'did:agentmesh:base:agent2',
+          score: 0.8,
+          vector_score: 0.75,
+          keyword_score: 0.85,
+          card: {
+            name: 'Test Agent 2',
+            description: 'Another test agent',
+            url: 'https://agent2.example.com',
+            capabilities: [],
+            agentmesh: { did: 'did:agentmesh:base:agent2', trust_score: 0.7 },
+          },
+        },
       ];
 
       (global.fetch as Mock).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ results: expectedResults }),
+        json: async () => nodeResults,
       });
 
       const results = await discovery.search('translate');
 
       expect(results).toHaveLength(2);
       expect(results[0]!.did).toBe('did:agentmesh:base:agent1');
+      expect(results[0]!.name).toBe('Test Agent 1');
+      expect(results[0]!.trust.overall).toBe(0.85);
     });
 
     it('should throw error on API failure', async () => {
@@ -208,12 +233,12 @@ describe('DiscoveryClient', () => {
   // ===========================================================================
 
   describe('searchByTags()', () => {
-    it('should search by tags array', async () => {
+    it('should search by tags using keyword endpoint', async () => {
       discovery.setNodeUrl('https://node.example.com');
 
       (global.fetch as Mock).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ results: [] }),
+        json: async () => [],
       });
 
       await discovery.searchByTags(['nlp', 'translation']);
@@ -221,8 +246,8 @@ describe('DiscoveryClient', () => {
       const call = (global.fetch as Mock).mock.calls[0]!;
       const url = new URL(call[0] as string);
 
-      expect(url.pathname).toBe('/api/v1/discovery/by-tags');
-      expect(url.searchParams.get('tags')).toBe('nlp,translation');
+      expect(url.pathname).toBe('/agents');
+      expect(url.searchParams.get('q')).toBe('nlp,translation');
     });
   });
 
@@ -322,7 +347,7 @@ describe('DiscoveryClient', () => {
       await expect(discovery.announce(card)).rejects.toThrow('Node URL not configured');
     });
 
-    it('should POST capability card to announce endpoint', async () => {
+    it('should POST capability card to agents endpoint', async () => {
       discovery.setNodeUrl('https://node.example.com');
       const card = sampleCapabilityCard('did:agentmesh:base:agent1');
 
@@ -331,9 +356,36 @@ describe('DiscoveryClient', () => {
       await discovery.announce(card);
 
       const call = (global.fetch as Mock).mock.calls[0]!;
-      expect(call[0]).toBe('https://node.example.com/api/v1/discovery/announce');
+      expect(call[0]).toBe('https://node.example.com/agents');
       expect((call[1] as RequestInit).method).toBe('POST');
       expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual(card);
+    });
+
+    it('should include admin token in Authorization header', async () => {
+      discovery.setNodeUrl('https://node.example.com');
+      const card = sampleCapabilityCard('did:agentmesh:base:agent1');
+
+      (global.fetch as Mock).mockResolvedValueOnce({ ok: true });
+
+      await discovery.announce(card, 'my-secret-token');
+
+      const call = (global.fetch as Mock).mock.calls[0]!;
+      const headers = (call[1] as RequestInit).headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer my-secret-token');
+    });
+  });
+
+  // ===========================================================================
+  // unannounce Tests
+  // ===========================================================================
+
+  describe('unannounce()', () => {
+    it('should throw not yet supported error', async () => {
+      discovery.setNodeUrl('https://node.example.com');
+
+      await expect(
+        discovery.unannounce('did:agentmesh:base:agent1')
+      ).rejects.toThrow('not yet supported');
     });
   });
 

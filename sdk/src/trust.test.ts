@@ -8,6 +8,9 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { TrustClient } from './trust.js';
 import type { AgentMeshClient } from './client.js';
 
+// Mock fetch globally for node API tests
+global.fetch = vi.fn();
+
 /**
  * Mock viem's public client
  */
@@ -276,6 +279,51 @@ describe('TrustClient', () => {
       expect(score.reputation).toBe(1);
       expect(score.stake).toBe(1);
       expect(score.endorsement).toBe(1);
+    });
+  });
+
+  // ===========================================================================
+  // getTrustFromNode Tests (HTTP API)
+  // ===========================================================================
+
+  describe('getTrustFromNode()', () => {
+    it('should fetch trust score from node REST API', async () => {
+      (global.fetch as Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          did: 'did:agentmesh:base:agent1',
+          score: 0.85,
+          reputation: 0.9,
+          stake_score: 0.8,
+          endorsement_score: 0.75,
+        }),
+      });
+
+      const score = await trust.getTrustFromNode(
+        'did:agentmesh:base:agent1',
+        'https://api.agentme.cz'
+      );
+
+      expect(score.overall).toBe(0.85);
+      expect(score.reputation).toBe(0.9);
+      expect(score.stake).toBe(0.8);
+      expect(score.endorsement).toBe(0.75);
+
+      const call = (global.fetch as Mock).mock.calls[0]!;
+      const url = call[0] as string;
+      expect(url).toContain('/trust/');
+      expect(url).toContain('did');
+    });
+
+    it('should throw on API failure', async () => {
+      (global.fetch as Mock).mockResolvedValueOnce({
+        ok: false,
+        text: async () => 'Not found',
+      });
+
+      await expect(
+        trust.getTrustFromNode('did:agentmesh:base:unknown', 'https://api.agentme.cz')
+      ).rejects.toThrow('Failed to get trust from node');
     });
   });
 

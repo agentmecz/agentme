@@ -235,9 +235,9 @@ export class DiscoveryClient {
       params.set('currency', currency);
     }
 
-    // Make request to discovery endpoint
+    // Make request to semantic search endpoint
     const response = await fetch(
-      `${this.nodeUrl}/api/v1/discovery/search?${params.toString()}`,
+      `${this.nodeUrl}/agents/semantic?${params.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -251,8 +251,49 @@ export class DiscoveryClient {
       throw new Error(`Discovery search failed: ${error}`);
     }
 
-    const data = (await response.json()) as { results: DiscoveryResult[] };
-    return data.results;
+    // Node returns a direct array of SemanticSearchResult objects
+    const data = (await response.json()) as Array<{
+      did: string;
+      score: number;
+      vector_score: number;
+      keyword_score: number;
+      card: {
+        name: string;
+        description: string;
+        url: string;
+        capabilities?: Array<{ id: string; name: string; description?: string }>;
+        agentmesh?: {
+          did: string;
+          trust_score?: number;
+          pricing?: { base_price: number; currency: string; model: string };
+        };
+      };
+    }>;
+
+    return data.map((item) => ({
+      did: item.did,
+      name: item.card.name,
+      description: item.card.description,
+      url: item.card.url,
+      trust: {
+        overall: item.card.agentmesh?.trust_score ?? item.score,
+        reputation: item.score,
+        stake: 0,
+        endorsement: 0,
+      },
+      matchingSkills: (item.card.capabilities ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+      })),
+      pricing: item.card.agentmesh?.pricing
+        ? {
+            model: 'per_request' as const,
+            amount: String(item.card.agentmesh.pricing.base_price),
+            currency: item.card.agentmesh.pricing.currency,
+          }
+        : undefined,
+    }));
   }
 
   /**
@@ -273,7 +314,7 @@ export class DiscoveryClient {
     const { minTrust = 0, maxPrice, currency, limit = 20, offset = 0 } = options;
 
     const params = new URLSearchParams();
-    params.set('tags', tags.join(','));
+    params.set('q', tags.join(','));
     params.set('limit', String(limit));
     params.set('offset', String(offset));
 
@@ -288,7 +329,7 @@ export class DiscoveryClient {
     }
 
     const response = await fetch(
-      `${this.nodeUrl}/api/v1/discovery/by-tags?${params.toString()}`,
+      `${this.nodeUrl}/agents?${params.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -302,8 +343,43 @@ export class DiscoveryClient {
       throw new Error(`Discovery search failed: ${error}`);
     }
 
-    const data = (await response.json()) as { results: DiscoveryResult[] };
-    return data.results;
+    // Node returns a direct array of CapabilityCard objects
+    const data = (await response.json()) as Array<{
+      name: string;
+      description: string;
+      url: string;
+      capabilities?: Array<{ id: string; name: string; description?: string }>;
+      agentmesh?: {
+        did: string;
+        trust_score?: number;
+        pricing?: { base_price: number; currency: string; model: string };
+      };
+    }>;
+
+    return data.map((card) => ({
+      did: card.agentmesh?.did ?? '',
+      name: card.name,
+      description: card.description,
+      url: card.url,
+      trust: {
+        overall: card.agentmesh?.trust_score ?? 0,
+        reputation: 0,
+        stake: 0,
+        endorsement: 0,
+      },
+      matchingSkills: (card.capabilities ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+      })),
+      pricing: card.agentmesh?.pricing
+        ? {
+            model: 'per_request' as const,
+            amount: String(card.agentmesh.pricing.base_price),
+            currency: card.agentmesh.pricing.currency,
+          }
+        : undefined,
+    }));
   }
 
   // ===========================================================================
@@ -399,7 +475,7 @@ export class DiscoveryClient {
 
     try {
       const response = await fetch(
-        `${this.nodeUrl}/api/v1/agents/${encodeURIComponent(did)}/card`,
+        `${this.nodeUrl}/agents/${encodeURIComponent(did)}`,
         {
           method: 'GET',
           headers: {
@@ -481,19 +557,26 @@ export class DiscoveryClient {
    * 2. GossipSub for real-time propagation
    *
    * @param card - The capability card to announce
+   * @param adminToken - Optional admin auth token (Bearer token or API key)
    * @throws Error if node URL not configured
    */
-  async announce(card: CapabilityCard): Promise<void> {
+  async announce(card: CapabilityCard, adminToken?: string): Promise<void> {
     if (!this.nodeUrl) {
       throw new Error('Node URL not configured.');
     }
 
-    const response = await fetch(`${this.nodeUrl}/api/v1/discovery/announce`, {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+
+    if (adminToken) {
+      headers['Authorization'] = `Bearer ${adminToken}`;
+    }
+
+    const response = await fetch(`${this.nodeUrl}/agents`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers,
       body: JSON.stringify(card),
     });
 
@@ -506,29 +589,16 @@ export class DiscoveryClient {
   /**
    * Remove an agent's capability card from the network.
    *
-   * @param did - The agent's DID to remove
+   * Note: The node API does not currently support agent removal.
+   * This method will throw until the endpoint is implemented.
+   *
+   * @param _did - The agent's DID to remove
    */
-  async unannounce(did: string): Promise<void> {
-    if (!this.nodeUrl) {
-      throw new Error('Node URL not configured.');
-    }
-
-    const response = await fetch(
-      `${this.nodeUrl}/api/v1/discovery/unannounce`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({ did }),
-      }
+  async unannounce(_did: string): Promise<void> {
+    throw new Error(
+      'Agent removal is not yet supported by the node API. ' +
+      'This feature will be available in a future version.'
     );
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to unannounce agent: ${error}`);
-    }
   }
 
   // ===========================================================================

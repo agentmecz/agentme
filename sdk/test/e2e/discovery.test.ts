@@ -95,9 +95,9 @@ describe('Agent Discovery E2E', () => {
       // Announce the card
       await discovery.announce(capabilityCard);
 
-      // Verify fetch was called
+      // Verify fetch was called with new endpoint
       expect(mockFetchResult.mockFetch).toHaveBeenCalledWith(
-        `${TEST_NODE_URL}/api/v1/discovery/announce`,
+        `${TEST_NODE_URL}/agents`,
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -148,28 +148,10 @@ describe('Agent Discovery E2E', () => {
   });
 
   describe('unannounce', () => {
-    it('should remove agent from discovery', async () => {
-      // First announce
-      const capabilityCard = createTestCapabilityCard({
-        id: TEST_DIDS.provider,
-      });
-      await discovery.announce(capabilityCard);
-      expect(mockFetchResult.announcedCards.has(TEST_DIDS.provider)).toBe(true);
-
-      // Then unannounce
-      await discovery.unannounce(TEST_DIDS.provider);
-
-      // Verify fetch was called
-      expect(mockFetchResult.mockFetch).toHaveBeenCalledWith(
-        `${TEST_NODE_URL}/api/v1/discovery/unannounce`,
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ did: TEST_DIDS.provider }),
-        })
+    it('should throw not yet supported error', async () => {
+      await expect(discovery.unannounce(TEST_DIDS.provider)).rejects.toThrow(
+        'not yet supported'
       );
-
-      // Verify card was removed
-      expect(mockFetchResult.announcedCards.has(TEST_DIDS.provider)).toBe(false);
     });
   });
 
@@ -543,7 +525,7 @@ describe('Agent Discovery E2E', () => {
       // Mock fetch - DHT endpoint returns 404 (not found), IPFS returns the card
       // getCapabilityCard tries: 1) well-known (N/A for agentmesh DID), 2) DHT, 3) IPFS
       const mockFetch = vi.fn().mockImplementation((url: string) => {
-        if (url.includes('/api/v1/agents/')) {
+        if (url.includes('/agents/') && !url.includes('ipfs')) {
           // DHT endpoint - return 404 so it falls through to IPFS
           return Promise.resolve({ ok: false, status: 404 });
         }
@@ -628,7 +610,7 @@ describe('Agent Discovery E2E', () => {
       // Mock fetch - DHT returns 404, custom IPFS gateway returns the card
       const testCard = createTestCapabilityCard({ id: 'did:agentmesh:base:custom-gateway' });
       const mockFetch = vi.fn().mockImplementation((url: string) => {
-        if (url.includes('/api/v1/agents/')) {
+        if (url.includes('/agents/') && !url.includes('gateway')) {
           // DHT endpoint - return 404 so it falls through to IPFS
           return Promise.resolve({ ok: false, status: 404 });
         }

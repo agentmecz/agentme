@@ -769,8 +769,8 @@ export function createMockFetch() {
     const path = urlObj.pathname;
     const method = options?.method ?? 'GET';
 
-    // Discovery search endpoint
-    if (path.includes('/api/v1/discovery/search') && method === 'GET') {
+    // Semantic search endpoint (GET /agents/semantic?q=...)
+    if (path === '/agents/semantic' && method === 'GET') {
       const query = urlObj.searchParams.get('q') ?? '';
       const minTrust = parseFloat(urlObj.searchParams.get('minTrust') ?? '0');
       const limit = parseInt(urlObj.searchParams.get('limit') ?? '20', 10);
@@ -810,66 +810,88 @@ export function createMockFetch() {
         return false;
       };
 
-      // Return mock results filtered by query and trust
-      let results: DiscoveryResult[] = Array.from(announcedCards.values())
+      // Return mock results as SemanticSearchResult array (node format)
+      let results = Array.from(announcedCards.values())
         .filter((card) => {
-          // All query words must match somewhere in the card (AND logic)
           const matchesQuery = queryWords.length === 0 || queryWords.every((word) =>
             cardMatchesWord(card, word)
           );
-          // Trust check - default trust score is 0.75 in createTestDiscoveryResult
           const cardTrust = card.trust?.score ?? 0.75;
           const meetsTrust = cardTrust >= minTrust;
           return matchesQuery && meetsTrust;
         })
-        .map((card) =>
-          createTestDiscoveryResult({
-            did: card.id,
+        .map((card) => ({
+          did: card.id,
+          score: 0.9,
+          vector_score: 0.85,
+          keyword_score: 0.95,
+          card: {
             name: card.name,
             description: card.description,
             url: card.url,
-            matchingSkills: card.skills,
-          })
-        );
+            capabilities: card.skills.map((s) => ({
+              id: s.id,
+              name: s.name,
+              description: s.description,
+            })),
+            agentmesh: {
+              did: card.id,
+              trust_score: card.trust?.score ?? 0.75,
+              pricing: card.skills[0]?.pricing ? {
+                base_price: parseFloat(card.skills[0].pricing.amount),
+                currency: card.skills[0].pricing.currency,
+                model: card.skills[0].pricing.model,
+              } : undefined,
+            },
+          },
+        }));
 
       // Apply limit
       results = results.slice(0, limit);
 
+      // Node returns a direct array, not { results: [] }
       return {
         ok: true,
-        json: async () => ({ results }),
+        json: async () => results,
       };
     }
 
-    // Discovery by-tags endpoint
-    if (path.includes('/api/v1/discovery/by-tags') && method === 'GET') {
-      const tags = (urlObj.searchParams.get('tags') ?? '').split(',');
+    // Keyword search endpoint (GET /agents?q=...)
+    if (path === '/agents' && method === 'GET') {
+      const query = urlObj.searchParams.get('q') ?? '';
+      const tags = query.split(',').map((t) => t.trim()).filter(Boolean);
 
-      const results: DiscoveryResult[] = Array.from(announcedCards.values())
-        .filter((card) =>
-          card.skills.some((skill) => skill.tags?.some((t) => tags.includes(t)))
-        )
-        .map((card) =>
-          createTestDiscoveryResult({
+      // Return mock results as CapabilityCard array (node format)
+      const results = Array.from(announcedCards.values())
+        .filter((card) => {
+          if (tags.length === 0) return true;
+          return card.skills.some((skill) => skill.tags?.some((t) => tags.includes(t)));
+        })
+        .map((card) => ({
+          name: card.name,
+          description: card.description,
+          url: card.url,
+          capabilities: card.skills.map((s) => ({
+            id: s.id,
+            name: s.name,
+            description: s.description,
+          })),
+          agentmesh: {
             did: card.id,
-            name: card.name,
-            description: card.description,
-            url: card.url,
-            matchingSkills: card.skills.filter((skill) =>
-              skill.tags?.some((t) => tags.includes(t))
-            ),
-          })
-        );
+            trust_score: card.trust?.score ?? 0.75,
+          },
+        }));
 
+      // Node returns a direct array
       return {
         ok: true,
-        json: async () => ({ results }),
+        json: async () => results,
       };
     }
 
-    // Get capability card by DID
-    if (path.includes('/api/v1/agents/') && path.includes('/card') && method === 'GET') {
-      const did = decodeURIComponent(path.split('/agents/')[1].split('/card')[0]);
+    // Get capability card by DID (GET /agents/{did})
+    if (path.startsWith('/agents/') && !path.includes('/semantic') && method === 'GET') {
+      const did = decodeURIComponent(path.split('/agents/')[1]);
       const card = announcedCards.get(did);
 
       if (card) {
@@ -886,21 +908,10 @@ export function createMockFetch() {
       };
     }
 
-    // Announce capability card
-    if (path.includes('/api/v1/discovery/announce') && method === 'POST') {
+    // Register agent (POST /agents)
+    if (path === '/agents' && method === 'POST') {
       const card = JSON.parse(options?.body as string) as CapabilityCard;
       announcedCards.set(card.id, card);
-
-      return {
-        ok: true,
-        json: async () => ({ success: true }),
-      };
-    }
-
-    // Unannounce capability card
-    if (path.includes('/api/v1/discovery/unannounce') && method === 'POST') {
-      const { did } = JSON.parse(options?.body as string) as { did: string };
-      announcedCards.delete(did);
 
       return {
         ok: true,
