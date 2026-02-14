@@ -42,6 +42,19 @@ async function main() {
   const envConfig = loadConfig();
   const jsonConfig = loadAgentCardConfig();
   const config = { ...envConfig, ...jsonConfig };
+
+  // Fix zero addresses in payment config: derive from private key
+  const zeroAddr = '0x0000000000000000000000000000000000000000';
+  if (config.payment?.addresses) {
+    const derived = privateKeyToAccount(config.privateKey as `0x${string}`).address;
+    for (const [chain, addr] of Object.entries(config.payment.addresses)) {
+      if (addr === zeroAddr) {
+        (config.payment.addresses as Record<string, string>)[chain] = derived;
+        console.log(`[Bridge] Replaced zero payment address for ${chain} with ${derived}`);
+      }
+    }
+  }
+
   const port = parseInt(process.env.BRIDGE_PORT || '3402', 10);
   const host = process.env.BRIDGE_HOST || '127.0.0.1';
   const requireAuth = process.env.BRIDGE_REQUIRE_AUTH

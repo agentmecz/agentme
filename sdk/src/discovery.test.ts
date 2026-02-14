@@ -214,6 +214,68 @@ describe('DiscoveryClient', () => {
       expect(results[0]!.trust.overall).toBe(0.85);
     });
 
+    it('should prefer enriched trust data from node response', async () => {
+      discovery.setNodeUrl('https://node.example.com');
+
+      const nodeResults = [
+        {
+          did: 'did:agentmesh:base:agent1',
+          score: 0.9,
+          vector_score: 0.85,
+          keyword_score: 0.95,
+          card: {
+            name: 'Trusted Agent',
+            description: 'An agent with enriched trust',
+            url: 'https://agent1.example.com',
+            capabilities: [{ id: 'translate', name: 'Translation' }],
+            agentmesh: { did: 'did:agentmesh:base:agent1', trust_score: 0.5 },
+          },
+          trust: {
+            did: 'did:agentmesh:base:agent1',
+            score: 0.92,
+            reputation: 0.95,
+            stake_score: 0.88,
+            endorsement_score: 0.80,
+          },
+        },
+        {
+          did: 'did:agentmesh:base:agent2',
+          score: 0.8,
+          vector_score: 0.75,
+          keyword_score: 0.85,
+          card: {
+            name: 'Basic Agent',
+            description: 'An agent without enriched trust',
+            url: 'https://agent2.example.com',
+            capabilities: [],
+            agentmesh: { did: 'did:agentmesh:base:agent2', trust_score: 0.7 },
+          },
+          // No trust field - should fall back to card.agentmesh.trust_score
+        },
+      ];
+
+      (global.fetch as Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => nodeResults,
+      });
+
+      const results = await discovery.search('translate');
+
+      expect(results).toHaveLength(2);
+
+      // Agent 1: should use enriched trust data
+      expect(results[0]!.trust.overall).toBe(0.92);
+      expect(results[0]!.trust.reputation).toBe(0.95);
+      expect(results[0]!.trust.stake).toBe(0.88);
+      expect(results[0]!.trust.endorsement).toBe(0.80);
+
+      // Agent 2: should fall back to card.agentmesh.trust_score
+      expect(results[1]!.trust.overall).toBe(0.7);
+      expect(results[1]!.trust.reputation).toBe(0.8);
+      expect(results[1]!.trust.stake).toBe(0);
+      expect(results[1]!.trust.endorsement).toBe(0);
+    });
+
     it('should throw error on API failure', async () => {
       discovery.setNodeUrl('https://node.example.com');
 

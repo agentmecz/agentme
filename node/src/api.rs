@@ -94,6 +94,9 @@ pub struct SemanticSearchResult {
     pub keyword_score: f32,
     /// The capability card.
     pub card: CapabilityCard,
+    /// Live trust data from TrustService (enriched at query time).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<TrustInfo>,
 }
 
 /// API server.
@@ -397,7 +400,7 @@ async fn semantic_search_handler(
     let hybrid_guard = hybrid.read().await;
     match hybrid_guard.search(&query).await {
         Ok(results) => {
-            let response: Vec<SemanticSearchResult> = results
+            let mut response: Vec<SemanticSearchResult> = results
                 .into_iter()
                 .map(|r| SemanticSearchResult {
                     did: r.did,
@@ -405,8 +408,17 @@ async fn semantic_search_handler(
                     vector_score: r.vector_score,
                     keyword_score: r.keyword_score,
                     card: r.card,
+                    trust: None,
                 })
                 .collect();
+
+            // Enrich each result with live trust data from TrustService
+            for result in &mut response {
+                if let Ok(trust_info) = state.trust.get_trust(&result.did).await {
+                    result.trust = Some(trust_info);
+                }
+            }
+
             Ok(Json(response))
         }
         Err(e) => Err((

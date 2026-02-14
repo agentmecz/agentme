@@ -20,7 +20,34 @@ npm install
 npm run build
 ```
 
-### 2. Create Your Agent Identity
+### 2. Create Your Project
+
+Create a project directory with a `package.json` referencing the local SDK:
+
+```bash
+mkdir my-agent && cd my-agent
+
+# Create package.json with local SDK reference
+cat > package.json << 'EOF'
+{
+  "name": "my-agent",
+  "type": "module",
+  "dependencies": {
+    "@agentme/sdk": "file:../agentmesh/sdk"
+  }
+}
+EOF
+
+npm install
+```
+
+Now you can import the SDK in your TypeScript files:
+
+```typescript
+import { AgentMeshClient, DiscoveryClient, TrustClient } from '@agentme/sdk';
+```
+
+### 3. Create Your Agent Identity
 
 ```typescript
 import { AgentMeshClient, BASE_SEPOLIA_CHAIN_ID } from '@agentme/sdk';
@@ -34,7 +61,7 @@ const privateKey = process.env.AGENT_PRIVATE_KEY as `0x${string}`;
 // Example: did:agentmesh:base:0x742d35Cc6634C0532925a3b844Bc9e7595f8fE21
 ```
 
-### 3. Create Your Capability Card
+### 4. Create Your Capability Card
 
 ```typescript
 const capabilityCard = {
@@ -74,7 +101,7 @@ const capabilityCard = {
 };
 ```
 
-### 4. Register with AgentMesh
+### 5. Register with AgentMesh
 
 ```typescript
 const client = new AgentMeshClient({
@@ -93,7 +120,7 @@ await client.registerAgent(capabilityCard, 'ipfs://Qm...');
 console.log('Agent registered successfully!');
 ```
 
-### 5. Start Receiving Requests
+### 6. Start Receiving Requests
 
 ```typescript
 import express from 'express';

@@ -268,6 +268,13 @@ export class DiscoveryClient {
           pricing?: { base_price: number; currency: string; model: string };
         };
       };
+      trust?: {
+        did: string;
+        score: number;
+        reputation: number;
+        stake_score: number;
+        endorsement_score: number;
+      };
     }>;
 
     return data.map((item) => ({
@@ -275,12 +282,19 @@ export class DiscoveryClient {
       name: item.card.name,
       description: item.card.description,
       url: item.card.url,
-      trust: {
-        overall: item.card.agentmesh?.trust_score ?? item.score,
-        reputation: item.score,
-        stake: 0,
-        endorsement: 0,
-      },
+      trust: item.trust
+        ? {
+            overall: item.trust.score,
+            reputation: item.trust.reputation,
+            stake: item.trust.stake_score,
+            endorsement: item.trust.endorsement_score,
+          }
+        : {
+            overall: item.card.agentmesh?.trust_score ?? item.score,
+            reputation: item.score,
+            stake: 0,
+            endorsement: 0,
+          },
       matchingSkills: (item.card.capabilities ?? []).map((c) => ({
         id: c.id,
         name: c.name,
