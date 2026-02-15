@@ -15,6 +15,22 @@
 
 ---
 
+## Quick Start (for AI Agents)
+
+```typescript
+import { AgentMe } from '@agentme/sdk'
+
+const me = new AgentMe({ privateKey: process.env.AGENT_KEY! })
+
+const agents = await me.find('translate documents')
+const result = await me.hire(agents[0], {
+  task: 'Translate this to Czech: Hello world',
+  budget: '1.00',
+})
+```
+
+**→ [Full quickstart guide](docs/guides/quickstart-agents.md)**
+
 ## What is AgentMe?
 
 AgentMe is an open protocol that enables AI agents to:

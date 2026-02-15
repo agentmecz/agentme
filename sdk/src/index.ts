@@ -224,3 +224,17 @@ export type {
 export { loadDeployment, isDeployed } from './deployments.js';
 
 export type { DeploymentAddresses } from './deployments.js';
+
+// =============================================================================
+// Easy API (High-Level for AI Agents)
+// =============================================================================
+
+export { AgentMe, createAgentMe } from './easy.js';
+
+export type {
+  AgentMeOptions,
+  FindOptions,
+  HireOptions,
+  HireResult,
+  AgentInfo as EasyAgentInfo,
+} from './easy.js';
