@@ -52,8 +52,7 @@ const NODE_URL = 'http://localhost:8080';
 const BRIDGE_URL = 'http://localhost:3402';
 const RPC_URL = 'http://localhost:8545';
 
-// Test account (Anvil default account #0)
-const TEST_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as const;
+// Test accounts will be generated fresh for each test run
 
 // =============================================================================
 // Contract ABIs
@@ -75,6 +74,25 @@ const TRUST_REGISTRY_ABI = [
     type: 'function',
     stateMutability: 'view',
     inputs: [{ name: 'didHash', type: 'bytes32' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'didHash', type: 'bytes32' },
+          { name: 'owner', type: 'address' },
+          { name: 'capabilityCardCID', type: 'string' },
+          { name: 'registeredAt', type: 'uint256' },
+          { name: 'isActive', type: 'bool' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'getAgentByOwner',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }],
     outputs: [
       {
         name: '',
@@ -163,6 +181,16 @@ const ESCROW_ABI = [
     outputs: [],
   },
   {
+    name: 'confirmDelivery',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'escrowId', type: 'uint256' },
+      { name: 'outputHash', type: 'bytes32' },
+    ],
+    outputs: [],
+  },
+  {
     name: 'releaseEscrow',
     type: 'function',
     stateMutability: 'nonpayable',
@@ -190,6 +218,8 @@ const ESCROW_ABI = [
           { name: 'outputHash', type: 'bytes32' },
           { name: 'deadline', type: 'uint256' },
           { name: 'state', type: 'uint8' },
+          { name: 'createdAt', type: 'uint256' },
+          { name: 'deliveredAt', type: 'uint256' },
         ],
       },
     ],
@@ -199,9 +229,10 @@ const ESCROW_ABI = [
     type: 'event',
     inputs: [
       { name: 'escrowId', indexed: true, type: 'uint256' },
-      { name: 'client', indexed: true, type: 'address' },
-      { name: 'provider', indexed: true, type: 'address' },
+      { name: 'clientDid', indexed: true, type: 'bytes32' },
+      { name: 'providerDid', indexed: true, type: 'bytes32' },
       { name: 'amount', type: 'uint256' },
+      { name: 'deadline', type: 'uint256' },
     ],
   },
   // Custom Errors
@@ -275,6 +306,16 @@ const ERC20_ABI = [
     ],
     outputs: [{ name: '', type: 'bool' }],
   },
+  {
+    name: 'mint',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 // =============================================================================
@@ -296,8 +337,10 @@ function sleep(ms: number): Promise<void> {
 describe('AgentMesh E2E Integration', () => {
   let deployment: DeploymentAddresses;
   let publicClient: ReturnType<typeof createPublicClient>;
-  let walletClient: ReturnType<typeof createWalletClient>;
-  let account: ReturnType<typeof privateKeyToAccount>;
+  let clientWalletClient: ReturnType<typeof createWalletClient>;
+  let providerWalletClient: ReturnType<typeof createWalletClient>;
+  let clientAccount: ReturnType<typeof privateKeyToAccount>;
+  let providerAccount: ReturnType<typeof privateKeyToAccount>;
   let clientDid: string;
   let clientDidHash: `0x${string}`;
   let providerDid: string;
@@ -318,30 +361,70 @@ describe('AgentMesh E2E Integration', () => {
     expect(deployment.escrow).not.toBe(ZERO_ADDRESS);
     expect(deployment.usdc).not.toBe(ZERO_ADDRESS);
 
-    // Setup clients
-    account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    // Generate fresh accounts for this test run
+    const crypto = require('crypto');
+    const clientPrivateKey = '0x' + crypto.randomBytes(32).toString('hex');
+    const providerPrivateKey = '0x' + crypto.randomBytes(32).toString('hex');
+    
+    // Setup accounts and clients
+    clientAccount = privateKeyToAccount(clientPrivateKey);
+    providerAccount = privateKeyToAccount(providerPrivateKey);
     
     publicClient = createPublicClient({
       chain: foundry,
       transport: http(RPC_URL),
     });
     
-    walletClient = createWalletClient({
-      account,
+    clientWalletClient = createWalletClient({
+      account: clientAccount,
+      chain: foundry,
+      transport: http(RPC_URL),
+    });
+    
+    providerWalletClient = createWalletClient({
+      account: providerAccount,
       chain: foundry,
       transport: http(RPC_URL),
     });
 
-    // Generate DIDs
+    // Generate DIDs for fresh accounts
     const timestamp = Date.now();
     clientDid = `did:agentme:local:client-${timestamp}`;
     providerDid = `did:agentme:local:provider-${timestamp}`;
     clientDidHash = didToHash(clientDid);
     providerDidHash = didToHash(providerDid);
 
-    console.log(`Test account: ${account.address}`);
+    console.log(`Client account: ${clientAccount.address}`);
+    console.log(`Provider account: ${providerAccount.address}`);
     console.log(`Client DID: ${clientDid}`);
     console.log(`Provider DID: ${providerDid}`);
+
+    // Fund the new accounts from Anvil account 0 (which has lots of ETH)
+    const fundingAccount = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
+    const fundingWallet = createWalletClient({
+      account: fundingAccount,
+      chain: foundry,
+      transport: http(RPC_URL),
+    });
+
+    // Send 1 ETH to each account for gas
+    const fundingAmount = parseUnits('1', 18);
+    
+    const clientFundingTx = await fundingWallet.sendTransaction({
+      to: clientAccount.address,
+      value: fundingAmount,
+    });
+    
+    const providerFundingTx = await fundingWallet.sendTransaction({
+      to: providerAccount.address,
+      value: fundingAmount,
+    });
+
+    await publicClient.waitForTransactionReceipt({ hash: clientFundingTx });
+    await publicClient.waitForTransactionReceipt({ hash: providerFundingTx });
+    
+    console.log(`Funded client account: ${clientFundingTx}`);
+    console.log(`Funded provider account: ${providerFundingTx}`);
   });
 
   describe('Infrastructure Health Checks', () => {
@@ -376,21 +459,56 @@ describe('AgentMesh E2E Integration', () => {
 
   describe('Account Setup and Balances', () => {
     it('should have sufficient ETH balance for gas', async () => {
-      const ethBalance = await publicClient.getBalance({ address: account.address });
-      expect(ethBalance).toBeGreaterThan(parseUnits('0.1', 18)); // At least 0.1 ETH
-      console.log(`ETH balance: ${formatUnits(ethBalance, 18)} ETH`);
+      const clientEthBalance = await publicClient.getBalance({ address: clientAccount.address });
+      const providerEthBalance = await publicClient.getBalance({ address: providerAccount.address });
+      
+      expect(clientEthBalance).toBeGreaterThan(parseUnits('0.1', 18)); // At least 0.1 ETH
+      expect(providerEthBalance).toBeGreaterThan(parseUnits('0.1', 18));
+      
+      console.log(`Client ETH balance: ${formatUnits(clientEthBalance, 18)} ETH`);
+      console.log(`Provider ETH balance: ${formatUnits(providerEthBalance, 18)} ETH`);
     });
 
-    it('should have USDC tokens for escrow', async () => {
-      const usdcBalance = await publicClient.readContract({
+    it('should mint USDC tokens for client account', async () => {
+      // First check current balance
+      const initialBalance = await publicClient.readContract({
         address: deployment.usdc,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
-        args: [account.address],
+        args: [clientAccount.address],
+      });
+
+      console.log(`Initial USDC balance: ${formatUnits(initialBalance, 6)} USDC`);
+
+      // Mint 10 USDC to client account (using admin account 0)
+      const adminAccount = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
+      const adminWalletClient = createWalletClient({
+        account: adminAccount,
+        chain: foundry,
+        transport: http(RPC_URL),
+      });
+
+      const mintAmount = parseUnits('10', 6); // 10 USDC
+      const mintTx = await adminWalletClient.writeContract({
+        address: deployment.usdc,
+        abi: ERC20_ABI,
+        functionName: 'mint',
+        args: [clientAccount.address, mintAmount],
+      });
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: mintTx });
+      expect(receipt.status).toBe('success');
+
+      // Verify balance after minting
+      const finalBalance = await publicClient.readContract({
+        address: deployment.usdc,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [clientAccount.address],
       });
       
-      expect(usdcBalance).toBeGreaterThanOrEqual(parseUnits('1', 6)); // At least 1 USDC
-      console.log(`USDC balance: ${formatUnits(usdcBalance, 6)} USDC`);
+      expect(finalBalance).toBeGreaterThanOrEqual(parseUnits('1', 6)); // At least 1 USDC needed for test
+      console.log(`Final USDC balance: ${formatUnits(finalBalance, 6)} USDC`);
     });
   });
 
@@ -399,7 +517,7 @@ describe('AgentMesh E2E Integration', () => {
       const capabilityCardCID = 'QmTestClient123';
       
       try {
-        const tx = await walletClient.writeContract({
+        const tx = await clientWalletClient.writeContract({
           address: deployment.trustRegistry,
           abi: TRUST_REGISTRY_ABI,
           functionName: 'registerAgent',
@@ -410,12 +528,8 @@ describe('AgentMesh E2E Integration', () => {
         expect(receipt.status).toBe('success');
         console.log(`Client registration TX: ${tx}`);
       } catch (error) {
-        // Agent might already be registered, check for known error
-        const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes('AlreadyRegistered') && !message.includes('0xe098d3ee')) {
-          throw error;
-        }
-        console.log('Client agent already registered');
+        // Should not happen with fresh accounts, re-throw all errors
+        throw error;
       }
 
       // Verify registration
@@ -427,7 +541,7 @@ describe('AgentMesh E2E Integration', () => {
       });
       
       expect(agent.didHash).toBe(clientDidHash);
-      expect(agent.owner).toBe(getAddress(account.address));
+      expect(agent.owner).toBe(getAddress(clientAccount.address));
       expect(agent.isActive).toBe(true);
     });
 
@@ -435,7 +549,7 @@ describe('AgentMesh E2E Integration', () => {
       const capabilityCardCID = 'QmTestProvider123';
       
       try {
-        const tx = await walletClient.writeContract({
+        const tx = await providerWalletClient.writeContract({
           address: deployment.trustRegistry,
           abi: TRUST_REGISTRY_ABI,
           functionName: 'registerAgent',
@@ -446,11 +560,8 @@ describe('AgentMesh E2E Integration', () => {
         expect(receipt.status).toBe('success');
         console.log(`Provider registration TX: ${tx}`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes('AlreadyRegistered') && !message.includes('0xe098d3ee')) {
-          throw error;
-        }
-        console.log('Provider agent already registered');
+        // Should not happen with fresh accounts, re-throw all errors
+        throw error;
       }
 
       // Verify active status
@@ -512,8 +623,9 @@ describe('AgentMesh E2E Integration', () => {
       
       if (agents.length > 0) {
         const agent = agents[0];
-        expect(agent).toHaveProperty('card');
-        expect(agent.card).toHaveProperty('name');
+        // Agent may be wrapped in { card: ... } or be the card directly
+        const card = agent.card ?? agent;
+        expect(card).toHaveProperty('name');
       }
     });
 
@@ -549,14 +661,14 @@ describe('AgentMesh E2E Integration', () => {
       const taskHash = keccak256(toHex(taskDescription));
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 24 * 60 * 60); // 24 hours
 
-      const tx = await walletClient.writeContract({
+      const tx = await clientWalletClient.writeContract({
         address: deployment.escrow,
         abi: ESCROW_ABI,
         functionName: 'createEscrow',
         args: [
           clientDidHash,
           providerDidHash,
-          account.address, // Provider address (using same account for simplicity)
+          providerAccount.address, // Provider address
           deployment.usdc,
           escrowAmount,
           taskHash,
@@ -566,6 +678,8 @@ describe('AgentMesh E2E Integration', () => {
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
       expect(receipt.status).toBe('success');
+      
+      console.log(`CreateEscrow receipt:`, JSON.stringify(receipt, (k, v) => typeof v === 'bigint' ? v.toString() : v, 2));
 
       // Extract escrow ID from EscrowCreated event
       const logs = parseEventLogs({
@@ -573,6 +687,11 @@ describe('AgentMesh E2E Integration', () => {
         logs: receipt.logs,
         eventName: 'EscrowCreated',
       });
+      
+      console.log(`Found ${logs.length} EscrowCreated events`);
+      if (logs.length === 0 && receipt.logs.length > 0) {
+        console.log('Receipt has logs but no EscrowCreated events:', receipt.logs);
+      }
       
       expect(logs.length).toBe(1);
       escrowId = logs[0].args.escrowId;
@@ -582,8 +701,8 @@ describe('AgentMesh E2E Integration', () => {
     });
 
     it('should approve and fund escrow', async () => {
-      // Approve USDC transfer
-      const approveTx = await walletClient.writeContract({
+      // Approve USDC transfer from client account
+      const approveTx = await clientWalletClient.writeContract({
         address: deployment.usdc,
         abi: ERC20_ABI,
         functionName: 'approve',
@@ -592,9 +711,10 @@ describe('AgentMesh E2E Integration', () => {
 
       let receipt = await publicClient.waitForTransactionReceipt({ hash: approveTx });
       expect(receipt.status).toBe('success');
+      console.log(`USDC approved for escrow, TX: ${approveTx}`);
 
-      // Fund escrow
-      const fundTx = await walletClient.writeContract({
+      // Fund escrow from client account
+      const fundTx = await clientWalletClient.writeContract({
         address: deployment.escrow,
         abi: ESCROW_ABI,
         functionName: 'fundEscrow',
@@ -625,8 +745,33 @@ describe('AgentMesh E2E Integration', () => {
       console.log(`Escrow state: ${escrow.state} (Funded), Amount: ${formatUnits(escrow.amount, 6)} USDC`);
     });
 
+    it('should confirm delivery by provider', async () => {
+      // Provider confirms task delivery with output hash
+      const outputHash = keccak256(toHex('e2e-test-output-result'));
+      const tx = await providerWalletClient.writeContract({
+        address: deployment.escrow,
+        abi: ESCROW_ABI,
+        functionName: 'confirmDelivery',
+        args: [escrowId, outputHash],
+      });
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
+      expect(receipt.status).toBe('success');
+      console.log(`Delivery confirmed by provider, TX: ${tx}`);
+    });
+
     it('should release escrow', async () => {
-      const tx = await walletClient.writeContract({
+      // Check state before release
+      const preEscrow = await publicClient.readContract({
+        address: deployment.escrow,
+        abi: ESCROW_ABI,
+        functionName: 'getEscrow',
+        args: [escrowId],
+      });
+      console.log(`Pre-release escrow state: ${preEscrow.state}, escrowId: ${escrowId}`);
+
+      // Client releases escrow after provider confirmed delivery
+      const tx = await clientWalletClient.writeContract({
         address: deployment.escrow,
         abi: ESCROW_ABI,
         functionName: 'releaseEscrow',
@@ -644,8 +789,8 @@ describe('AgentMesh E2E Integration', () => {
         args: [escrowId],
       });
 
-      expect(escrow.state).toBe(2); // State 2 = Released
-      console.log(`Escrow released, TX: ${tx}`);
+      expect(escrow.state).toBe(4); // State 4 = Released (AWAITING=0, FUNDED=1, DELIVERED=2, DISPUTED=3, RELEASED=4)
+      console.log(`Escrow released by provider, TX: ${tx}`);
     });
   });
 
