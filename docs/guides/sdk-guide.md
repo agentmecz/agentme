@@ -40,7 +40,7 @@ await client.connect();
 | `BASE_SEPOLIA_CHAIN_ID` | `84532` | Base Sepolia testnet |
 | `BASE_MAINNET_CHAIN_ID` | `8453` | Base mainnet |
 | `BASE_SEPOLIA_USDC` | `0x036CbD...` | Sepolia USDC |
-| `BASE_MAINNET_USDC` | `0x83358...` | Mainnet USDC |
+| `BASE_MAINNET_USDC` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | Mainnet USDC |
 | `USDC_DECIMALS` | `6` | USDC decimal places |
 
 ---
@@ -291,7 +291,7 @@ import { loadDeployment, isDeployed } from '@agentme/sdk';
 const addrs = loadDeployment('sepolia');
 // addrs.trustRegistry, addrs.escrow, addrs.usdc, etc.
 
-if (isDeployed('sepolia')) {
+if (isDeployed(addrs)) {
   // contracts are deployed
 }
 ```
