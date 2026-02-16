@@ -802,9 +802,13 @@ describe('AgentMesh E2E Integration', () => {
         clientDid: clientDid,
       };
 
+      const bridgeToken = process.env.BRIDGE_API_TOKEN ?? 'test-token-e2e';
       const response = await fetch(`${BRIDGE_URL}/task`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${bridgeToken}`,
+        },
         body: JSON.stringify(taskPayload),
       });
 
