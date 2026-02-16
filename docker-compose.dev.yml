@@ -1,0 +1,79 @@
+services:
+
+  # Local Ethereum Node (Anvil)
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: ["anvil", "--host", "0.0.0.0", "--chain-id", "31337"]
+    ports:
+      - "${ANVIL_PORT:-8545}:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Deploy contracts to Anvil (runs once)
+  deploy:
+    image: ghcr.io/foundry-rs/foundry:latest
+    working_dir: /app/contracts
+    command:
+      [
+        "script",
+        "script/DeployLocal.s.sol",
+        "--rpc-url",
+        "http://anvil:8545",
+        "--broadcast"
+      ]
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+    volumes:
+      - ./contracts:/app/contracts
+      - ./deployments:/app/deployments
+    depends_on:
+      anvil:
+        condition: service_healthy
+
+
+  # AgentMe P2P Node
+  node:
+    build:
+      context: ./node
+    command:
+      [
+        "./agentme",
+        "start",
+        "--enable-semantic-search",
+        "--api-addr",
+        "0.0.0.0:8080",
+        "--p2p-addr",
+        "/ip4/0.0.0.0/tcp/4001"
+      ]
+    ports:
+      - "8080:8080"
+      - "4001:4001"
+    env_file:
+      - .env
+    volumes:
+      - agentme_data:/app/data
+      - ./node/config.local.toml:/app/config.toml:ro
+    depends_on:
+      deploy:
+        condition: service_completed_successfully
+
+  # Bridge service
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+    command: ["node", "dist/cli.js", "--host", "0.0.0.0", "--port", "3402"]
+    ports:
+      - "3402:3402"
+    env_file:
+      - .env
+    depends_on:
+      deploy:
+        condition: service_completed_successfully
+
+
+volumes:
+  agentme_data:
