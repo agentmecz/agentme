@@ -46,9 +46,7 @@ contract ERC8004Bridge is Ownable {
     /// @param requestHash The validation request hash
     /// @param response The validation response code
     /// @param tag The validation tag
-    event ValidationSubmitted(
-        uint256 indexed erc8004AgentId, bytes32 indexed requestHash, uint8 response, string tag
-    );
+    event ValidationSubmitted(uint256 indexed erc8004AgentId, bytes32 indexed requestHash, uint8 response, string tag);
 
     /// @notice Emitted when the IdentityRegistry address is updated
     /// @param newRegistry The new IdentityRegistry address
@@ -198,11 +196,7 @@ contract ERC8004Bridge is Ownable {
     /// @param agentTokenId The AgentMe token ID
     /// @param metadataKey The metadata key to query
     /// @return The raw metadata value as bytes
-    function getAgentMetadata(uint256 agentTokenId, string calldata metadataKey)
-        external
-        view
-        returns (bytes memory)
-    {
+    function getAgentMetadata(uint256 agentTokenId, string calldata metadataKey) external view returns (bytes memory) {
         uint256 erc8004AgentId = agentMeToERC8004[agentTokenId];
         if (erc8004AgentId == 0) revert AgentNotRegistered(agentTokenId);
 
