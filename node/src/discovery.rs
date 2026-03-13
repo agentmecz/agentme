@@ -6,8 +6,9 @@
 //! - DHT-based decentralized registry
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use crate::error::{Error, Result};
@@ -127,6 +128,110 @@ pub enum PricingModel {
     Custom,
 }
 
+/// Local discovery cache tuning.
+#[derive(Debug, Clone)]
+pub struct DiscoveryCacheConfig {
+    /// Time-to-live for cached records.
+    pub ttl: Duration,
+    /// Maximum number of cached records before LRU eviction.
+    pub max_entries: usize,
+}
+
+impl Default for DiscoveryCacheConfig {
+    fn default() -> Self {
+        Self {
+            ttl: Duration::from_secs(300),
+            max_entries: 10_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CacheEntry {
+    card: CapabilityCard,
+    cached_at: Instant,
+}
+
+#[derive(Debug, Default)]
+struct DiscoveryCacheState {
+    entries: HashMap<String, CacheEntry>,
+    lru: VecDeque<String>,
+}
+
+impl DiscoveryCacheState {
+    fn touch(&mut self, did: &str) {
+        self.lru.retain(|k| k != did);
+        self.lru.push_back(did.to_string());
+    }
+
+    fn insert(
+        &mut self,
+        did: String,
+        card: CapabilityCard,
+        now: Instant,
+        max_entries: usize,
+    ) -> Vec<String> {
+        self.entries.insert(
+            did.clone(),
+            CacheEntry {
+                card,
+                cached_at: now,
+            },
+        );
+        self.touch(&did);
+
+        let mut evicted = Vec::new();
+        while self.entries.len() > max_entries {
+            if let Some(oldest) = self.lru.pop_front() {
+                if self.entries.remove(&oldest).is_some() {
+                    evicted.push(oldest);
+                }
+            } else {
+                break;
+            }
+        }
+        evicted
+    }
+
+    fn get(&mut self, did: &str, ttl: Duration, now: Instant) -> Option<CapabilityCard> {
+        if let Some(entry) = self.entries.get(did) {
+            if now.duration_since(entry.cached_at) <= ttl {
+                let card = entry.card.clone();
+                self.touch(did);
+                return Some(card);
+            }
+        }
+
+        self.remove(did);
+        None
+    }
+
+    fn remove(&mut self, did: &str) -> bool {
+        self.lru.retain(|k| k != did);
+        self.entries.remove(did).is_some()
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.lru.clear();
+    }
+
+    fn prune_expired(&mut self, ttl: Duration, now: Instant) -> Vec<String> {
+        let expired: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| now.duration_since(entry.cached_at) > ttl)
+            .map(|(did, _)| did.clone())
+            .collect();
+
+        for did in &expired {
+            self.remove(did);
+        }
+
+        expired
+    }
+}
+
 /// Discovery service for finding agents.
 ///
 /// Provides agent registration, search, and lookup functionality.
@@ -134,7 +239,9 @@ pub enum PricingModel {
 /// Optionally uses HybridSearch for semantic search capabilities.
 pub struct DiscoveryService {
     /// Local cache of capability cards indexed by DID.
-    cache: RwLock<HashMap<String, CapabilityCard>>,
+    cache: RwLock<DiscoveryCacheState>,
+    /// Cache behavior configuration.
+    cache_config: DiscoveryCacheConfig,
 
     /// Optional network command sender for DHT operations.
     network_tx: Option<mpsc::Sender<SwarmCommand>>,
@@ -146,13 +253,27 @@ pub struct DiscoveryService {
 }
 
 impl DiscoveryService {
+    fn from_parts(
+        network_tx: Option<mpsc::Sender<SwarmCommand>>,
+        hybrid_search: Option<Arc<tokio::sync::RwLock<HybridSearch>>>,
+        cache_config: DiscoveryCacheConfig,
+    ) -> Self {
+        Self {
+            cache: RwLock::new(DiscoveryCacheState::default()),
+            cache_config,
+            network_tx,
+            hybrid_search,
+        }
+    }
+
     /// Create a new discovery service without network integration.
     pub fn new() -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-            network_tx: None,
-            hybrid_search: None,
-        }
+        Self::from_parts(None, None, DiscoveryCacheConfig::default())
+    }
+
+    /// Create a discovery service with custom cache configuration.
+    pub fn with_cache_config(cache_config: DiscoveryCacheConfig) -> Self {
+        Self::from_parts(None, None, cache_config)
     }
 
     /// Create a discovery service with network integration.
@@ -161,11 +282,7 @@ impl DiscoveryService {
     /// - Store registered cards in the DHT
     /// - Query the DHT for cards not found in local cache
     pub fn with_network(network_tx: mpsc::Sender<SwarmCommand>) -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-            network_tx: Some(network_tx),
-            hybrid_search: None,
-        }
+        Self::from_parts(Some(network_tx), None, DiscoveryCacheConfig::default())
     }
 
     /// Create a discovery service with semantic search capabilities.
@@ -174,11 +291,11 @@ impl DiscoveryService {
     /// - Index registered cards for semantic search
     /// - Use hybrid (vector + keyword) search instead of simple matching
     pub fn with_hybrid_search(hybrid_search: HybridSearch) -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-            network_tx: None,
-            hybrid_search: Some(Arc::new(tokio::sync::RwLock::new(hybrid_search))),
-        }
+        Self::from_parts(
+            None,
+            Some(Arc::new(tokio::sync::RwLock::new(hybrid_search))),
+            DiscoveryCacheConfig::default(),
+        )
     }
 
     /// Create a discovery service with both network and semantic search.
@@ -186,11 +303,11 @@ impl DiscoveryService {
         network_tx: mpsc::Sender<SwarmCommand>,
         hybrid_search: HybridSearch,
     ) -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-            network_tx: Some(network_tx),
-            hybrid_search: Some(Arc::new(tokio::sync::RwLock::new(hybrid_search))),
-        }
+        Self::from_parts(
+            Some(network_tx),
+            Some(Arc::new(tokio::sync::RwLock::new(hybrid_search))),
+            DiscoveryCacheConfig::default(),
+        )
     }
 
     /// Create a discovery service with a shared HybridSearch instance.
@@ -202,11 +319,87 @@ impl DiscoveryService {
         network_tx: mpsc::Sender<SwarmCommand>,
         hybrid_search: Arc<tokio::sync::RwLock<HybridSearch>>,
     ) -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-            network_tx: Some(network_tx),
-            hybrid_search: Some(hybrid_search),
+        Self::from_parts(
+            Some(network_tx),
+            Some(hybrid_search),
+            DiscoveryCacheConfig::default(),
+        )
+    }
+
+    async fn remove_from_search_index(&self, dids: Vec<String>) {
+        if dids.is_empty() {
+            return;
         }
+        if let Some(ref hybrid_search) = self.hybrid_search {
+            let mut search = hybrid_search.write().await;
+            for did in dids {
+                search.remove_card(&did);
+            }
+        }
+    }
+
+    async fn cache_insert(&self, did: String, card: CapabilityCard) -> Result<()> {
+        let evicted = {
+            let mut cache = self.cache.write().map_err(|e| {
+                Error::Discovery(format!("Failed to acquire cache write lock: {}", e))
+            })?;
+            cache.insert(
+                did,
+                card,
+                Instant::now(),
+                self.cache_config.max_entries,
+            )
+        };
+        self.remove_from_search_index(evicted).await;
+        Ok(())
+    }
+
+    fn cache_get(&self, did: &str) -> Result<Option<CapabilityCard>> {
+        let mut cache = self
+            .cache
+            .write()
+            .map_err(|e| Error::Discovery(format!("Failed to acquire cache write lock: {}", e)))?;
+        Ok(cache.get(did, self.cache_config.ttl, Instant::now()))
+    }
+
+    async fn prune_expired_cache(&self) -> Result<()> {
+        let expired = {
+            let mut cache = self.cache.write().map_err(|e| {
+                Error::Discovery(format!("Failed to acquire cache write lock: {}", e))
+            })?;
+            cache.prune_expired(self.cache_config.ttl, Instant::now())
+        };
+        self.remove_from_search_index(expired).await;
+        Ok(())
+    }
+
+    /// Invalidate a single cached DID.
+    pub async fn invalidate(&self, did: &str) -> Result<bool> {
+        let removed = {
+            let mut cache = self.cache.write().map_err(|e| {
+                Error::Discovery(format!("Failed to acquire cache write lock: {}", e))
+            })?;
+            cache.remove(did)
+        };
+        if removed {
+            self.remove_from_search_index(vec![did.to_string()]).await;
+        }
+        Ok(removed)
+    }
+
+    /// Clear all cached entries.
+    pub async fn clear_cache(&self) -> Result<()> {
+        {
+            let mut cache = self.cache.write().map_err(|e| {
+                Error::Discovery(format!("Failed to acquire cache write lock: {}", e))
+            })?;
+            cache.clear();
+        }
+        if let Some(ref hybrid_search) = self.hybrid_search {
+            let mut search = hybrid_search.write().await;
+            search.clear();
+        }
+        Ok(())
     }
 
     /// Return a shared reference to the hybrid search instance, if available.
@@ -251,12 +444,7 @@ impl DiscoveryService {
         }
 
         // Store in local cache
-        {
-            let mut cache = self.cache.write().map_err(|e| {
-                Error::Discovery(format!("Failed to acquire cache write lock: {}", e))
-            })?;
-            cache.insert(did.clone(), card.clone());
-        }
+        self.cache_insert(did.clone(), card.clone()).await?;
 
         // Index in hybrid search if available
         if let Some(ref hybrid_search) = self.hybrid_search {
@@ -335,6 +523,8 @@ impl DiscoveryService {
 
     /// Simple keyword search (fallback when hybrid search is unavailable).
     async fn search_simple(&self, query: &str) -> Result<Vec<CapabilityCard>> {
+        self.prune_expired_cache().await?;
+
         let cache = self
             .cache
             .read()
@@ -343,7 +533,9 @@ impl DiscoveryService {
         let query_lower = query.to_lowercase();
 
         let mut matches: Vec<CapabilityCard> = cache
+            .entries
             .values()
+            .map(|entry| &entry.card)
             .filter(|card| self.card_matches(card, &query_lower))
             .cloned()
             .collect();
@@ -413,7 +605,10 @@ impl DiscoveryService {
 
     /// Get the number of agents in the local cache.
     pub fn cache_size(&self) -> usize {
-        self.cache.read().map(|c| c.len()).unwrap_or(0)
+        if let Ok(mut cache) = self.cache.write() {
+            cache.prune_expired(self.cache_config.ttl, Instant::now());
+        }
+        self.cache.read().map(|c| c.entries.len()).unwrap_or(0)
     }
 
     /// Check if a capability card matches the search query.
@@ -461,14 +656,8 @@ impl DiscoveryService {
     /// - Caches successful responses for future lookups
     pub async fn get(&self, did: &str) -> Result<Option<CapabilityCard>> {
         // Check local cache first
-        {
-            let cache = self.cache.read().map_err(|e| {
-                Error::Discovery(format!("Failed to acquire cache read lock: {}", e))
-            })?;
-
-            if let Some(card) = cache.get(did).cloned() {
-                return Ok(Some(card));
-            }
+        if let Some(card) = self.cache_get(did)? {
+            return Ok(Some(card));
         }
 
         // Query DHT if network is available and not in cache
@@ -490,9 +679,7 @@ impl DiscoveryService {
                     match serde_json::from_slice::<CapabilityCard>(&data) {
                         Ok(card) => {
                             // Cache the result for future lookups
-                            if let Ok(mut cache) = self.cache.write() {
-                                cache.insert(did.to_string(), card.clone());
-                            }
+                            self.cache_insert(did.to_string(), card.clone()).await?;
                             return Ok(Some(card));
                         }
                         Err(e) => {
@@ -1130,6 +1317,57 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(service.cache_size(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cache_entry_expires_after_ttl() {
+        let service = DiscoveryService::with_cache_config(DiscoveryCacheConfig {
+            ttl: Duration::from_millis(25),
+            max_entries: 100,
+        });
+        let did = "did:agoramesh:base:ttl-expire";
+        service.register(&sample_capability_card(did)).await.unwrap();
+        assert!(service.get(did).await.unwrap().is_some());
+
+        tokio::time::sleep(Duration::from_millis(40)).await;
+
+        let result = service.get(did).await.unwrap();
+        assert!(result.is_none(), "Entry should expire after TTL");
+        assert_eq!(service.cache_size(), 0, "Expired entry should be removed");
+    }
+
+    #[tokio::test]
+    async fn test_cache_respects_max_entries_lru_eviction() {
+        let service = DiscoveryService::with_cache_config(DiscoveryCacheConfig {
+            ttl: Duration::from_secs(60),
+            max_entries: 2,
+        });
+        let did1 = "did:agoramesh:base:lru-1";
+        let did2 = "did:agoramesh:base:lru-2";
+        let did3 = "did:agoramesh:base:lru-3";
+
+        service.register(&sample_capability_card(did1)).await.unwrap();
+        service.register(&sample_capability_card(did2)).await.unwrap();
+        // Touch did1 so did2 becomes LRU.
+        let _ = service.get(did1).await.unwrap();
+        service.register(&sample_capability_card(did3)).await.unwrap();
+
+        assert_eq!(service.cache_size(), 2, "Cache should stay within max_entries");
+        assert!(service.get(did1).await.unwrap().is_some(), "Most recently used should remain");
+        assert!(service.get(did3).await.unwrap().is_some(), "Newest entry should remain");
+        assert!(service.get(did2).await.unwrap().is_none(), "Least recently used should be evicted");
+    }
+
+    #[tokio::test]
+    async fn test_invalidate_removes_specific_cached_entry() {
+        let service = DiscoveryService::new();
+        let did = "did:agoramesh:base:invalidate-target";
+        service.register(&sample_capability_card(did)).await.unwrap();
+        assert!(service.get(did).await.unwrap().is_some());
+
+        let removed = service.invalidate(did).await.unwrap();
+        assert!(removed, "invalidate should report removed entry");
+        assert!(service.get(did).await.unwrap().is_none());
     }
 
     // ========== TDD Tests: request_registry_broadcast() ==========
