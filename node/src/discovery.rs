@@ -55,14 +55,12 @@ impl Serialize for CapabilityCard {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("CapabilityCard", 8)?;
+        let mut state = serializer.serialize_struct("CapabilityCard", 7)?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("description", &self.description)?;
         state.serialize_field("url", &self.url)?;
         state.serialize_field("provider", &self.provider)?;
         state.serialize_field("skills", &self.skills)?;
-        // Deprecated: emit "capabilities" as alias for backward compatibility
-        state.serialize_field("capabilities", &self.skills)?;
         state.serialize_field("authentication", &self.authentication)?;
         state.serialize_field("x-agoramesh", &self.agoramesh)?;
         state.end()
