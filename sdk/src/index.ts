@@ -60,6 +60,9 @@ export type {
 
   // Capability Card
   CapabilityCard,
+  AgentInterface,
+  AgentExtension,
+  SecurityScheme,
   Skill,
   SkillExample,
   ServiceLevelAgreement,

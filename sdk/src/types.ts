@@ -42,6 +42,44 @@ export interface ContractAddresses {
 // =============================================================================
 
 /**
+ * A2A v1.0 protocol binding for an agent interface endpoint.
+ */
+export interface AgentInterface {
+  /** Endpoint URL for this interface */
+  url: string;
+  /** Protocol binding (e.g., 'JSONRPC') */
+  protocolBinding: string;
+  /** Protocol version (e.g., '1.0') */
+  protocolVersion: string;
+}
+
+/**
+ * A2A v1.0 extension declaration.
+ */
+export interface AgentExtension {
+  /** Extension URI (e.g., 'https://agoramesh.ai/extensions/trust/v1') */
+  uri: string;
+  /** Whether the extension is required for interoperability */
+  required: boolean;
+}
+
+/**
+ * OpenAPI 3.2-style security scheme for Agent Card.
+ */
+export interface SecurityScheme {
+  /** Scheme type: http, apiKey, oauth2, openIdConnect */
+  type: string;
+  /** HTTP auth scheme (e.g., 'bearer', 'DID') — only for type: 'http' */
+  scheme?: string;
+  /** Where the API key is sent — only for type: 'apiKey' */
+  in?: 'header' | 'query' | 'cookie';
+  /** Name of the header/query/cookie parameter — only for type: 'apiKey' */
+  name?: string;
+  /** Human-readable description of the scheme */
+  description?: string;
+}
+
+/**
  * Skill/capability that an agent can perform.
  */
 export interface Skill {
@@ -189,6 +227,8 @@ export interface CapabilityCard {
   url: string;
   /** A2A protocol version */
   protocolVersion?: string;
+  /** A2A v1.0 supported interfaces (protocol bindings) */
+  supportedInterfaces?: AgentInterface[];
   /** Provider/organization information */
   provider?: Provider;
   /** Agent capabilities (streaming, push notifications, etc.) */
@@ -198,7 +238,15 @@ export interface CapabilityCard {
     stateTransitionHistory?: boolean;
     x402Payments?: boolean;
     escrow?: boolean;
+    /** A2A v1.0 extension declarations */
+    extensions?: AgentExtension[];
+    /** Whether this agent provides an extended agent card endpoint */
+    extendedAgentCard?: boolean;
   };
+  /** OpenAPI 3.2-style security scheme definitions */
+  securitySchemes?: Record<string, SecurityScheme>;
+  /** Security requirements — array of scheme name references */
+  securityRequirements?: Array<Record<string, string[]>>;
   /** Authentication configuration */
   authentication?: Authentication;
   /** Skills/capabilities offered by the agent */

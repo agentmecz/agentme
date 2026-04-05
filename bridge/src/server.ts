@@ -11,7 +11,7 @@ import { ClaudeExecutor } from './executor.js';
 import { ResolvedTaskInput, TaskInputSchema, TaskResult, RichAgentConfig, SandboxInputSchema, MAX_SANDBOX_OUTPUT_LENGTH, SANDBOX_REQUESTS_PER_HOUR, DIDIdentity, FREETIER_ID_PATTERN, TASK_RESULT_TTL, TASK_SYNC_TIMEOUT } from './types.js';
 import { EscrowClient } from './escrow.js';
 import { createX402Middleware, type X402Config } from './middleware/x402.js';
-import { handleA2ARequest, type A2ABridge } from './a2a.js';
+import { handleA2ARequest, type A2ABridge, type A2ARequestOptions } from './a2a.js';
 import { isDIDAuthHeader, parseDIDAuthHeader, verifyDIDSignature } from './did-auth.js';
 import { FreeTierLimiter } from './free-tier-limiter.js';
 import { TrustStore } from './trust-store.js';
@@ -640,6 +640,11 @@ export class BridgeServer {
     this.app.get('/.well-known/agent-card.json', agentCardHandler);
     this.app.get('/.well-known/a2a.json', agentCardHandler);
 
+    // Extended agent card (A2A v1.0) — authenticated, includes payment/escrow details
+    this.app.get('/extendedAgentCard', this.createTaskAuthMiddleware(), (req: Request, res: Response) => {
+      res.json(this.buildExtendedCard());
+    });
+
     // llms.txt — public machine-readable documentation (no auth required)
     this.app.get('/llms.txt', (req: Request, res: Response) => {
       const baseUrl = this.config.url || `${req.protocol}://${req.get('host')}`;
@@ -726,7 +731,9 @@ export class BridgeServer {
           protocols: ['a2a', 'rest', 'websocket'],
         }),
       };
-      const response = await handleA2ARequest(req.body, bridge);
+      const response = await handleA2ARequest(req.body, bridge, {
+        a2aVersionHeader: req.headers['a2a-version'] as string | undefined,
+      });
       res.json(response);
     };
 
@@ -1330,12 +1337,66 @@ export class BridgeServer {
     }
     card.protocolVersion = cfg.protocolVersion ?? '1.0';
 
+    // A2A v1.0: supportedInterfaces — auto-derive from url if not explicitly configured
+    if (cfg.supportedInterfaces) {
+      card.supportedInterfaces = cfg.supportedInterfaces;
+    } else if (cfg.url) {
+      card.supportedInterfaces = [
+        {
+          url: cfg.url,
+          protocolBinding: 'JSONRPC',
+          protocolVersion: card.protocolVersion as string,
+        },
+      ];
+    }
+
     if (cfg.provider) {
       card.provider = cfg.provider;
     }
-    if (cfg.capabilities) {
-      card.capabilities = cfg.capabilities;
+
+    // A2A v1.0: capabilities with extensions
+    const capabilities: Record<string, unknown> = cfg.capabilities
+      ? { ...cfg.capabilities }
+      : {};
+
+    // Declare AgoraMesh extensions
+    if (!capabilities.extensions) {
+      capabilities.extensions = [
+        { uri: 'https://agoramesh.ai/extensions/trust/v1', required: false },
+        { uri: 'https://agoramesh.ai/extensions/payment/v1', required: false },
+      ];
     }
+    capabilities.extendedAgentCard = true;
+
+    card.capabilities = capabilities;
+
+    // OpenAPI 3.2-style securitySchemes based on configured auth
+    const securitySchemes: Record<string, Record<string, unknown>> = {};
+    const securityRequirements: Array<Record<string, string[]>> = [];
+    const authSchemes = cfg.authentication?.schemes ?? [];
+
+    for (const scheme of authSchemes) {
+      if (scheme === 'bearer' || scheme === 'Bearer') {
+        securitySchemes['bearer'] = { type: 'http', scheme: 'bearer' };
+        securityRequirements.push({ bearer: [] });
+      } else if (scheme === 'x402') {
+        securitySchemes['x402'] = { type: 'apiKey', in: 'header', name: 'x-payment' };
+        securityRequirements.push({ x402: [] });
+      } else if (scheme === 'did:key' || scheme === 'did' || scheme === 'DID') {
+        securitySchemes['did-key'] = {
+          type: 'http',
+          scheme: 'DID',
+          description: 'DID:key Ed25519 signature auth',
+        };
+        securityRequirements.push({ 'did-key': [] });
+      }
+    }
+
+    if (Object.keys(securitySchemes).length > 0) {
+      card.securitySchemes = securitySchemes;
+      card.securityRequirements = securityRequirements;
+    }
+
     if (cfg.authentication) {
       card.authentication = cfg.authentication;
     }
@@ -1370,6 +1431,37 @@ export class BridgeServer {
   }
 
   /**
+   * Build the extended agent card (A2A v1.0).
+   * Includes the full public card plus payment/escrow details
+   * that are only exposed to authenticated clients.
+   */
+  private buildExtendedCard(): Record<string, unknown> {
+    const card = this.buildCapabilityCard();
+
+    // Add escrow details if available
+    if (this.escrowClient && this.providerDid) {
+      (card as Record<string, unknown>).escrow = {
+        contractAddress: this.config.payment?.escrowContract,
+        providerDid: this.config.providerDid,
+        supportedTokens: this.config.payment?.currencies ?? ['USDC'],
+        chains: this.config.payment?.chains ?? ['base-sepolia'],
+      };
+    }
+
+    // Add detailed payment info beyond what the public card exposes
+    if (this.config.payment) {
+      (card as Record<string, unknown>).paymentDetails = {
+        addresses: this.config.payment.addresses,
+        methods: this.config.payment.methods,
+        escrowContract: this.config.payment.escrowContract,
+        walletProvisioning: this.config.payment.walletProvisioning,
+      };
+    }
+
+    return card;
+  }
+
+  /**
    * Build llms.txt content following the llmstxt.org specification.
    * Provides machine-readable documentation for AI agents discovering this bridge.
    */
@@ -1384,6 +1476,7 @@ export class BridgeServer {
 - Submit task (sync): POST ${baseUrl}/task?wait=true
 - Submit task (async): POST ${baseUrl}/task
 - Poll result: GET ${baseUrl}/task/{taskId}
+- Extended card (auth): GET ${baseUrl}/extendedAgentCard
 - A2A JSON-RPC: POST ${baseUrl}/a2a
 - Sandbox (no auth): POST ${baseUrl}/sandbox
 

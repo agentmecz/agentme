@@ -6,6 +6,7 @@ import type {
   PaymentConfig,
   Authentication,
   Provider,
+  AgentInterface,
 } from '@agoramesh/sdk';
 
 // === Validation constants ===
@@ -34,6 +35,31 @@ const DEFAULT_TIMEOUT = 300;
  * Prevents injection attacks and path traversal.
  */
 const TASK_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+// === A2A attachments (non-text message parts passed through to executor) ===
+
+export interface RawAttachment {
+  type: 'raw';
+  content: string; // base64-encoded
+  mediaType: string;
+  filename?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UrlAttachment {
+  type: 'url';
+  url: string;
+  mediaType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DataAttachment {
+  type: 'data';
+  data: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+export type TaskAttachment = RawAttachment | UrlAttachment | DataAttachment;
 
 // === Task schemas ===
 
@@ -80,8 +106,11 @@ export type TaskInput = z.infer<typeof TaskInputSchema>;
 /**
  * TaskInput after server-side auto-fill: taskId and clientDid are always present.
  * Use this type in code that runs after the auto-fill logic in POST /task.
+ * May include attachments from A2A multi-type message parts.
  */
-export type ResolvedTaskInput = TaskInput & Required<Pick<TaskInput, 'taskId' | 'clientDid'>>;
+export type ResolvedTaskInput = TaskInput & Required<Pick<TaskInput, 'taskId' | 'clientDid'>> & {
+  attachments?: TaskAttachment[];
+};
 
 // === Task polling constants ===
 
@@ -217,6 +246,8 @@ export interface RichAgentConfig extends AgentConfig {
   termsOfServiceUrl?: string;
   /** URL to privacy policy */
   privacyPolicyUrl?: string;
+  /** A2A v1.0 supported interfaces (protocol bindings) — auto-derived from url if omitted */
+  supportedInterfaces?: AgentInterface[];
   /** A2A JSON-RPC endpoint and supported methods */
   a2a?: {
     endpoint: string;

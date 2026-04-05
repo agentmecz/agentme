@@ -188,7 +188,12 @@ describe('Agent Card endpoint (minimal config)', () => {
     expect(res.body.id).toBeUndefined();
     expect(res.body.url).toBeUndefined();
     expect(res.body.provider).toBeUndefined();
-    expect(res.body.capabilities).toBeUndefined();
+    // capabilities is always present (A2A v1.0 extensions + extendedAgentCard)
+    expect(res.body.capabilities.extendedAgentCard).toBe(true);
+    expect(res.body.capabilities.extensions).toEqual([
+      { uri: 'https://agoramesh.ai/extensions/trust/v1', required: false },
+      { uri: 'https://agoramesh.ai/extensions/payment/v1', required: false },
+    ]);
     expect(res.body.authentication).toBeUndefined();
     expect(res.body.trust).toBeUndefined();
     expect(res.body.defaultInputModes).toBeUndefined();
@@ -279,6 +284,11 @@ describe('Agent Card endpoint (rich config)', () => {
       pushNotifications: false,
       x402Payments: true,
       escrow: true,
+      extensions: [
+        { uri: 'https://agoramesh.ai/extensions/trust/v1', required: false },
+        { uri: 'https://agoramesh.ai/extensions/payment/v1', required: false },
+      ],
+      extendedAgentCard: true,
     });
   });
 

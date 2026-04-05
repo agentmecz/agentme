@@ -2,10 +2,45 @@
  * A2A JSON-RPC 2.0 handler for AgoraMesh Bridge.
  *
  * Implements the A2A protocol standard: POST / with JSON-RPC 2.0 envelope.
- * Methods: message/send, tasks/get, tasks/cancel
+ * Methods (A2A v1.0.0): SendMessage, GetTask, CancelTask
+ * Legacy aliases: message/send, tasks/get, tasks/cancel
  */
 
-import type { ResolvedTaskInput, TaskResult } from './types.js';
+import { randomUUID } from 'node:crypto';
+import type { ResolvedTaskInput, TaskResult, TaskAttachment } from './types.js';
+
+// =============================================================================
+// A2A v1.0.0 message part types
+// =============================================================================
+
+export interface TextPart {
+  type: 'text';
+  text: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RawPart {
+  type: 'raw';
+  raw: string; // base64-encoded
+  mediaType: string;
+  filename?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UrlPart {
+  type: 'url';
+  url: string;
+  mediaType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DataPart {
+  type: 'data';
+  data: unknown; // arbitrary JSON
+  metadata?: Record<string, unknown>;
+}
+
+export type A2APart = TextPart | RawPart | UrlPart | DataPart;
 
 // =============================================================================
 // JSON-RPC types
@@ -43,21 +78,102 @@ export const A2A_ERRORS = {
   INTERNAL_ERROR: { code: -32603, message: 'Internal error' },
   TASK_NOT_FOUND: { code: -32001, message: 'Task not found' },
   TASK_NOT_CANCELLABLE: { code: -32002, message: 'Task not cancellable' },
+  INCOMPATIBLE_VERSION: { code: -32003, message: 'Incompatible A2A-Version' },
 } as const;
+
+// =============================================================================
+// A2A-Version header parsing
+// =============================================================================
+
+const A2A_VERSION_RE = /^\d+\.\d+$/;
+const DEFAULT_A2A_VERSION = '0.3';
+
+/**
+ * Parse and validate the A2A-Version header.
+ * Returns the version string, or DEFAULT_A2A_VERSION if absent/empty.
+ * Returns null if the header is present but malformed.
+ */
+export function parseA2AVersion(header: string | undefined): string | null {
+  if (!header || header.trim() === '') {
+    return DEFAULT_A2A_VERSION;
+  }
+  const trimmed = header.trim();
+  if (!A2A_VERSION_RE.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+// =============================================================================
+// A2A role constants (SCREAMING_SNAKE_CASE per A2A spec)
+// =============================================================================
+
+export const A2A_ROLE = {
+  ROLE_USER: 'ROLE_USER',
+  ROLE_AGENT: 'ROLE_AGENT',
+} as const;
+
+export type A2ARole = (typeof A2A_ROLE)[keyof typeof A2A_ROLE];
 
 // =============================================================================
 // A2A Task object
 // =============================================================================
 
+/** Internal task state (lowercase). Converted to SCREAMING_SNAKE_CASE at wire boundary. */
 export type A2ATaskState = 'submitted' | 'working' | 'completed' | 'failed' | 'canceled';
+
+/** Wire-format state names per A2A spec. */
+export type A2AWireState =
+  | 'TASK_STATE_SUBMITTED'
+  | 'TASK_STATE_WORKING'
+  | 'TASK_STATE_COMPLETED'
+  | 'TASK_STATE_FAILED'
+  | 'TASK_STATE_CANCELED';
+
+const STATE_TO_WIRE: Record<A2ATaskState, A2AWireState> = {
+  submitted: 'TASK_STATE_SUBMITTED',
+  working: 'TASK_STATE_WORKING',
+  completed: 'TASK_STATE_COMPLETED',
+  failed: 'TASK_STATE_FAILED',
+  canceled: 'TASK_STATE_CANCELED',
+};
+
+const WIRE_TO_STATE: Record<A2AWireState, A2ATaskState> = {
+  TASK_STATE_SUBMITTED: 'submitted',
+  TASK_STATE_WORKING: 'working',
+  TASK_STATE_COMPLETED: 'completed',
+  TASK_STATE_FAILED: 'failed',
+  TASK_STATE_CANCELED: 'canceled',
+};
+
+/** Convert internal state to wire-format SCREAMING_SNAKE_CASE. */
+export function toWireState(state: A2ATaskState): A2AWireState {
+  return STATE_TO_WIRE[state];
+}
+
+/** Convert wire-format state back to internal lowercase. Returns undefined for unknown values. */
+export function fromWireState(wire: string): A2ATaskState | undefined {
+  return WIRE_TO_STATE[wire as A2AWireState];
+}
+
+export interface A2ATaskStatus {
+  state: A2AWireState;
+  message?: string;
+  timestamp: string;
+}
+
+export interface A2AArtifact {
+  artifactId: string;
+  name?: string;
+  description?: string;
+  parts: A2APart[];
+}
 
 export interface A2ATask {
   id: string;
-  status: { state: A2ATaskState };
-  artifacts?: Array<{
-    name?: string;
-    parts: Array<{ type: 'text'; text: string }>;
-  }>;
+  messageId: string;
+  status: A2ATaskStatus;
+  artifacts?: A2AArtifact[];
 }
 
 // =============================================================================
@@ -102,21 +218,179 @@ function jsonRpcError(
   return { jsonrpc: '2.0', id, error: err };
 }
 
+function generateArtifactId(): string {
+  return `art-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function taskResultToA2ATask(taskId: string, result: TaskResult): A2ATask {
   const state: A2ATaskState = result.status === 'completed' ? 'completed' : 'failed';
+  const message = state === 'failed' ? (result.error ?? 'Task failed') : undefined;
 
   const task: A2ATask = {
     id: taskId,
-    status: { state },
+    messageId: randomUUID(),
+    status: {
+      state: toWireState(state),
+      ...(message !== undefined && { message }),
+      timestamp: new Date().toISOString(),
+    },
   };
 
   if (result.output) {
+    const parts: A2APart[] = [{ type: 'text', text: result.output }];
+
+    // Include file artifacts if the task produced file changes
+    if (result.filesChanged && result.filesChanged.length > 0) {
+      parts.push({
+        type: 'data',
+        data: { filesChanged: result.filesChanged },
+        metadata: { role: 'supplementary' },
+      });
+    }
+
     task.artifacts = [{
-      parts: [{ type: 'text', text: result.output }],
+      artifactId: generateArtifactId(),
+      name: 'response',
+      description: 'Task execution result',
+      parts,
     }];
   }
 
   return task;
+}
+
+// =============================================================================
+// Multi-type message part validation
+// =============================================================================
+
+/** Maximum size for a single base64-encoded raw part (5MB decoded) */
+const MAX_RAW_PART_SIZE = 5 * 1024 * 1024 * 1.37; // ~6.85MB base64 for 5MB binary
+
+/** Maximum URL length for url parts */
+const MAX_URL_LENGTH = 8192;
+
+/** Maximum serialized size for data parts (1MB) */
+const MAX_DATA_PART_SIZE = 1_000_000;
+
+/**
+ * Validate and classify an incoming message part.
+ * Returns an A2APart on success, or a string error message on failure.
+ */
+function validatePart(raw: Record<string, unknown>): A2APart | string {
+  const metadata = typeof raw.metadata === 'object' && raw.metadata !== null
+    ? raw.metadata as Record<string, unknown>
+    : undefined;
+
+  switch (raw.type) {
+    case 'text': {
+      if (typeof raw.text !== 'string') return 'text part missing "text" string field';
+      const part: TextPart = { type: 'text', text: raw.text };
+      if (metadata) part.metadata = metadata;
+      return part;
+    }
+    case 'raw': {
+      if (typeof raw.raw !== 'string') return 'raw part missing "raw" base64 string field';
+      if (typeof raw.mediaType !== 'string') return 'raw part missing "mediaType" string field';
+      if (raw.raw.length > MAX_RAW_PART_SIZE) return `raw part exceeds maximum size of 5MB`;
+      // Validate base64 format (allow standard and URL-safe base64 with padding)
+      if (!/^[A-Za-z0-9+/\-_]*={0,2}$/.test(raw.raw)) return 'raw part contains invalid base64';
+      const part: RawPart = { type: 'raw', raw: raw.raw, mediaType: raw.mediaType };
+      if (typeof raw.filename === 'string') part.filename = raw.filename;
+      if (metadata) part.metadata = metadata;
+      return part;
+    }
+    case 'url': {
+      if (typeof raw.url !== 'string') return 'url part missing "url" string field';
+      if (raw.url.length > MAX_URL_LENGTH) return `url part exceeds maximum URL length of ${MAX_URL_LENGTH}`;
+      // Basic URL validation
+      if (!raw.url.startsWith('http://') && !raw.url.startsWith('https://')) {
+        return 'url part must use http:// or https:// scheme';
+      }
+      const part: UrlPart = { type: 'url', url: raw.url };
+      if (typeof raw.mediaType === 'string') part.mediaType = raw.mediaType;
+      if (metadata) part.metadata = metadata;
+      return part;
+    }
+    case 'data': {
+      if (raw.data === undefined || raw.data === null) return 'data part missing "data" field';
+      const serialized = JSON.stringify(raw.data);
+      if (serialized.length > MAX_DATA_PART_SIZE) return `data part exceeds maximum size of 1MB`;
+      const part: DataPart = { type: 'data', data: raw.data };
+      if (metadata) part.metadata = metadata;
+      return part;
+    }
+    default:
+      return `unknown part type: ${String(raw.type)}`;
+  }
+}
+
+/**
+ * Build the prompt string from text parts, enriched with context from non-text parts.
+ */
+function buildPromptFromParts(parts: A2APart[]): string {
+  const textSegments: string[] = [];
+  const contextSegments: string[] = [];
+
+  for (const part of parts) {
+    switch (part.type) {
+      case 'text':
+        textSegments.push(part.text);
+        break;
+      case 'raw':
+        contextSegments.push(
+          `[Attached file${part.filename ? `: ${part.filename}` : ''} (${part.mediaType}, base64-encoded)]`
+        );
+        break;
+      case 'url':
+        contextSegments.push(
+          `[Referenced URL: ${part.url}${part.mediaType ? ` (${part.mediaType})` : ''}]`
+        );
+        break;
+      case 'data':
+        contextSegments.push(
+          `[Structured data: ${JSON.stringify(part.data)}]`
+        );
+        break;
+    }
+  }
+
+  let prompt = textSegments.join('\n\n');
+  if (contextSegments.length > 0) {
+    prompt += '\n\n--- Additional Context ---\n' + contextSegments.join('\n');
+  }
+  return prompt;
+}
+
+/**
+ * Convert validated non-text parts to TaskAttachment objects for the executor.
+ */
+function partsToAttachments(parts: A2APart[]): TaskAttachment[] {
+  const attachments: TaskAttachment[] = [];
+  for (const part of parts) {
+    if (part.type === 'raw') {
+      attachments.push({
+        type: 'raw',
+        content: part.raw,
+        mediaType: part.mediaType,
+        filename: part.filename,
+        metadata: part.metadata,
+      });
+    } else if (part.type === 'url') {
+      attachments.push({
+        type: 'url',
+        url: part.url,
+        mediaType: part.mediaType,
+        metadata: part.metadata,
+      });
+    } else if (part.type === 'data') {
+      attachments.push({
+        type: 'data',
+        data: part.data,
+        metadata: part.metadata,
+      });
+    }
+  }
+  return attachments;
 }
 
 // =============================================================================
@@ -133,18 +407,40 @@ async function handleMessageSend(
   }
 
   const message = params.message as Record<string, unknown>;
-  const parts = message.parts as Array<Record<string, unknown>> | undefined;
-  if (!parts || !Array.isArray(parts) || parts.length === 0) {
+  const rawParts = message.parts as Array<Record<string, unknown>> | undefined;
+  if (!rawParts || !Array.isArray(rawParts) || rawParts.length === 0) {
     return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.message.parts');
   }
 
-  // Extract text from first text part
-  const textPart = parts.find((p) => p.type === 'text' && typeof p.text === 'string');
-  if (!textPart) {
+  // Parse incoming messageId (optional per A2A spec)
+  const incomingMessageId = typeof message.messageId === 'string' ? message.messageId : undefined;
+
+  // Validate role — accept both A2A SCREAMING_SNAKE_CASE and legacy lowercase
+  const rawRole = typeof message.role === 'string' ? message.role : undefined;
+  const role = rawRole === A2A_ROLE.ROLE_USER || rawRole === 'user'
+    ? A2A_ROLE.ROLE_USER
+    : rawRole === A2A_ROLE.ROLE_AGENT || rawRole === 'agent'
+      ? A2A_ROLE.ROLE_AGENT
+      : A2A_ROLE.ROLE_USER;
+
+  // Validate and classify all parts
+  const validatedParts: A2APart[] = [];
+  for (const rawPart of rawParts) {
+    const result = validatePart(rawPart);
+    if (typeof result === 'string') {
+      return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, result);
+    }
+    validatedParts.push(result);
+  }
+
+  // At least one text part is required for the prompt
+  const hasText = validatedParts.some((p) => p.type === 'text' && (p as TextPart).text.length > 0);
+  if (!hasText) {
     return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'No text part found in message');
   }
 
-  const prompt = textPart.text as string;
+  // Build the prompt from all parts
+  const prompt = buildPromptFromParts(validatedParts);
   if (!prompt || prompt.length === 0) {
     return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Empty text in message part');
   }
@@ -160,12 +456,18 @@ async function handleMessageSend(
   const timeout = Math.max(1, Math.min(3600, rawTimeout));
 
   const taskId = `a2a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Collect non-text parts as attachments for the executor
+  const attachments = partsToAttachments(validatedParts);
+
   const task: ResolvedTaskInput = {
     taskId,
     type: 'prompt',
     prompt,
     timeout,
-    clientDid: typeof message.role === 'string' ? `did:a2a:${message.role}` : 'did:a2a:user',
+    clientDid: role === A2A_ROLE.ROLE_AGENT ? `did:a2a:agent` : `did:a2a:user`,
+    ...(incomingMessageId !== undefined && { a2aMessageId: incomingMessageId }),
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 
   try {
@@ -193,7 +495,11 @@ function handleTasksGet(
   if (task) {
     return jsonRpcSuccess(id, {
       id: taskId,
-      status: { state: 'working' as A2ATaskState },
+      messageId: randomUUID(),
+      status: {
+        state: toWireState('working'),
+        timestamp: new Date().toISOString(),
+      },
     } satisfies A2ATask);
   }
 
@@ -223,7 +529,12 @@ function handleTasksCancel(
 
   return jsonRpcSuccess(id, {
     id: taskId,
-    status: { state: 'canceled' as A2ATaskState },
+    messageId: randomUUID(),
+    status: {
+      state: toWireState('canceled'),
+      message: 'Task canceled by client',
+      timestamp: new Date().toISOString(),
+    },
   } satisfies A2ATask);
 }
 
@@ -231,14 +542,27 @@ function handleTasksCancel(
 // Main handler
 // =============================================================================
 
+export interface A2ARequestOptions {
+  /** Value of the A2A-Version HTTP header (undefined if absent). */
+  a2aVersionHeader?: string;
+}
+
 /**
  * Handle an A2A JSON-RPC 2.0 request.
  * Returns a JsonRpcResponse (always HTTP 200 for JSON-RPC, errors in the body).
  */
 export async function handleA2ARequest(
   body: unknown,
-  bridge: A2ABridge
+  bridge: A2ABridge,
+  options?: A2ARequestOptions
 ): Promise<JsonRpcResponse> {
+  // Validate A2A-Version header if present
+  const a2aVersion = parseA2AVersion(options?.a2aVersionHeader);
+  if (a2aVersion === null) {
+    return jsonRpcError(null, A2A_ERRORS.INCOMPATIBLE_VERSION,
+      `Malformed A2A-Version header. Expected format: MAJOR.MINOR (e.g. "1.0")`);
+  }
+
   // Validate JSON-RPC envelope
   if (!body || typeof body !== 'object') {
     return jsonRpcError(null, A2A_ERRORS.PARSE_ERROR);
@@ -262,14 +586,17 @@ export async function handleA2ARequest(
 
   const params = req.params as Record<string, unknown> | undefined;
 
-  // Dispatch to method handlers
+  // Dispatch to method handlers (A2A v1.0.0 names + legacy aliases)
   switch (req.method) {
+    case 'SendMessage':
     case 'message/send':
       return handleMessageSend(params, bridge, id);
 
+    case 'GetTask':
     case 'tasks/get':
       return handleTasksGet(params, bridge, id);
 
+    case 'CancelTask':
     case 'tasks/cancel':
       return handleTasksCancel(params, bridge, id);
 
