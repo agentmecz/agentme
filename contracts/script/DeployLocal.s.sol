@@ -66,7 +66,12 @@ contract DeployLocal is Script {
         c.escrow = address(new AgoraMeshEscrow(c.trustRegistry, admin));
         console.log("AgoraMeshEscrow:", c.escrow);
 
-        c.disputes = address(new TieredDisputeResolution(c.escrow, c.trustRegistry, c.usdc, admin));
+        c.disputes = address(new TieredDisputeResolution(
+            c.escrow, c.trustRegistry, c.usdc, admin,
+            address(0), // VRF coordinator (mock for local)
+            0,          // subscription ID
+            bytes32(0)  // key hash
+        ));
         console.log("TieredDisputeResolution:", c.disputes);
 
         c.streaming = address(new StreamingPayments(admin, c.trustRegistry));

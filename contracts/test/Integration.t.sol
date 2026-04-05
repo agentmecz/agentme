@@ -441,13 +441,18 @@ contract IntegrationTest is Test {
         d = disputeResolution.getDispute(disputeId);
         assertEq(uint256(d.state), uint256(IDisputeResolution.DisputeState.VOTING));
 
-        // Arbiters vote (majority for provider)
-        vm.prank(arbiter1);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_PROVIDER, 0, keccak256("just1"));
-        vm.prank(arbiter2);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_PROVIDER, 0, keccak256("just2"));
-        vm.prank(arbiter3);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, keccak256("just3"));
+        // Get VRF-selected arbiters and vote (majority for provider)
+        address[] memory selectedArbiters = disputeResolution.getArbiters(disputeId);
+        assertGe(selectedArbiters.length, 2); // need at least quorum
+
+        for (uint256 i = 0; i < selectedArbiters.length; i++) {
+            vm.prank(selectedArbiters[i]);
+            if (i < selectedArbiters.length - 1) {
+                disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_PROVIDER, 0, keccak256("just"));
+            } else {
+                disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, keccak256("just"));
+            }
+        }
 
         // Warp past voting period
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -512,13 +517,12 @@ contract IntegrationTest is Test {
         disputeResolution.submitAIAnalysis(disputeId, keccak256("analysis"), 7000);
         _fulfillVRF();
 
-        // Arbiters vote for 70/30 split
-        vm.prank(arbiter1);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 7000, keccak256("j1"));
-        vm.prank(arbiter2);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 7000, keccak256("j2"));
-        vm.prank(arbiter3);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 7000, keccak256("j3"));
+        // Get VRF-selected arbiters and have them vote for 70/30 split
+        address[] memory selectedArbiters = disputeResolution.getArbiters(disputeId);
+        for (uint256 i = 0; i < selectedArbiters.length; i++) {
+            vm.prank(selectedArbiters[i]);
+            disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 7000, keccak256("j"));
+        }
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         disputeResolution.finalizeRuling(disputeId);
@@ -572,12 +576,13 @@ contract IntegrationTest is Test {
         disputeResolution.submitAIAnalysis(disputeId, keccak256("analysis"), 10000);
         _fulfillVRF();
 
-        vm.prank(arbiter1);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
-        vm.prank(arbiter2);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
-        vm.prank(arbiter3);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
+        {
+            address[] memory firstRoundArbiters = disputeResolution.getArbiters(disputeId);
+            for (uint256 i = 0; i < firstRoundArbiters.length; i++) {
+                vm.prank(firstRoundArbiters[i]);
+                disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
+            }
+        }
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         disputeResolution.finalizeRuling(disputeId);
@@ -747,10 +752,13 @@ contract IntegrationTest is Test {
         disputeResolution.submitAIAnalysis(disputeId, keccak256("analysis"), 10000);
         _fulfillVRF();
 
-        vm.prank(arbiter1);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
-        vm.prank(arbiter2);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
+        {
+            address[] memory selectedArbiters = disputeResolution.getArbiters(disputeId);
+            for (uint256 i = 0; i < selectedArbiters.length; i++) {
+                vm.prank(selectedArbiters[i]);
+                disputeResolution.castVote(disputeId, IDisputeResolution.Vote.FAVOR_CLIENT, 0, "");
+            }
+        }
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         disputeResolution.finalizeRuling(disputeId);
@@ -955,13 +963,14 @@ contract IntegrationTest is Test {
         disputeResolution.submitAIAnalysis(disputeId, keccak256("ai-report"), 4000);
         _fulfillVRF();
 
-        // Arbiters vote for 40% client / 60% provider
-        vm.prank(arbiter1);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 4000, "");
-        vm.prank(arbiter2);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 4000, "");
-        vm.prank(arbiter3);
-        disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 4000, "");
+        // Get VRF-selected arbiters and have them vote for 40% client / 60% provider
+        {
+            address[] memory selectedArbiters = disputeResolution.getArbiters(disputeId);
+            for (uint256 i = 0; i < selectedArbiters.length; i++) {
+                vm.prank(selectedArbiters[i]);
+                disputeResolution.castVote(disputeId, IDisputeResolution.Vote.SPLIT, 4000, "");
+            }
+        }
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
         disputeResolution.finalizeRuling(disputeId);

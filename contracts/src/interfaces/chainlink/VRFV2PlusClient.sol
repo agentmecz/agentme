@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title VRFV2PlusClient - Chainlink VRF v2.5 client library
-/// @notice Minimal reproduction of Chainlink's VRFV2PlusClient for VRF v2.5 requests
-/// @dev Based on @chainlink/contracts v1.3.0. Replace with `forge install smartcontractkit/chainlink`
-///      and remap `@chainlink/contracts/` when the full dependency is available.
+// VRFV2PlusClient - Chainlink VRF v2.5 client library
+// Minimal reproduction of Chainlink's VRFV2PlusClient for VRF v2.5 requests.
+// Based on chainlink contracts v1.3.0.
 library VRFV2PlusClient {
     bytes4 private constant EXTRA_ARGS_V1_TAG = bytes4(keccak256("VRF ExtraArgsV1"));
 

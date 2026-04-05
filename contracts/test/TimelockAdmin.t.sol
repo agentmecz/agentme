@@ -58,25 +58,25 @@ contract TimelockAdminTest is Test {
 
     // ============ Setup Verification ============
 
-    function test_timelockHasAdminRole() public view {
+    function test_timelockHasAdminRole() public {
         assertTrue(trustRegistry.hasRole(DEFAULT_ADMIN_ROLE, address(timelock)));
         assertTrue(escrow.hasRole(DEFAULT_ADMIN_ROLE, address(timelock)));
         assertTrue(chainRegistry.hasRole(DEFAULT_ADMIN_ROLE, address(timelock)));
     }
 
-    function test_deployerLostAdminRole() public view {
+    function test_deployerLostAdminRole() public {
         assertFalse(trustRegistry.hasRole(DEFAULT_ADMIN_ROLE, deployer));
         assertFalse(escrow.hasRole(DEFAULT_ADMIN_ROLE, deployer));
         assertFalse(chainRegistry.hasRole(DEFAULT_ADMIN_ROLE, deployer));
     }
 
-    function test_deployerHasTimelockRoles() public view {
+    function test_deployerHasTimelockRoles() public {
         assertTrue(timelock.hasRole(timelock.PROPOSER_ROLE(), deployer));
         assertTrue(timelock.hasRole(timelock.EXECUTOR_ROLE(), deployer));
         assertTrue(timelock.hasRole(timelock.CANCELLER_ROLE(), deployer));
     }
 
-    function test_timelockMinDelay() public view {
+    function test_timelockMinDelay() public {
         assertEq(timelock.getMinDelay(), MIN_DELAY);
     }
 

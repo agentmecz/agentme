@@ -15,6 +15,9 @@ contract DeployTest is Test {
         // Set up environment for testing
         // Private key for anvil default account[0]
         vm.setEnv("DEPLOYER_PRIVATE_KEY", "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+        vm.setEnv("VRF_COORDINATOR", vm.toString(address(0x1)));
+        vm.setEnv("VRF_SUBSCRIPTION_ID", "1");
+        vm.setEnv("VRF_KEY_HASH", vm.toString(bytes32(uint256(1))));
     }
 
     /// @notice Test deployment on a simulated Base Sepolia
