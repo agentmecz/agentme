@@ -45,3 +45,4 @@ docs/security/SECURITY_AUDIT_*.md
 coverage/
 .nyc_output/
 .worktrees/
+mcp/dist/
