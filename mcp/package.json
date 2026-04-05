@@ -21,12 +21,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@vitest/coverage-v8": "^4.0.18",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.39.2",
     "tsx": "^4.7.0",
     "typescript": "^5.7.0",

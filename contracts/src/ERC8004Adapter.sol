@@ -472,6 +472,7 @@ contract ERC8004Adapter is IERC8004IdentityRegistry, IERC8004ReputationRegistry,
     /// @notice Set the canonical ERC-8004 IdentityRegistry address
     /// @param _registry Address of the canonical IdentityRegistry
     function setCanonicalIdentityRegistry(address _registry) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_registry == address(0)) revert ZeroAddress();
         canonicalIdentityRegistry = IERC8004IdentityRegistry(_registry);
         emit CanonicalIdentityRegistryUpdated(_registry);
     }
@@ -479,6 +480,7 @@ contract ERC8004Adapter is IERC8004IdentityRegistry, IERC8004ReputationRegistry,
     /// @notice Set the canonical ERC-8004 ReputationRegistry address
     /// @param _registry Address of the canonical ReputationRegistry
     function setCanonicalReputationRegistry(address _registry) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_registry == address(0)) revert ZeroAddress();
         canonicalReputationRegistry = IERC8004ReputationRegistry(_registry);
         emit CanonicalReputationRegistryUpdated(_registry);
     }
@@ -486,6 +488,7 @@ contract ERC8004Adapter is IERC8004IdentityRegistry, IERC8004ReputationRegistry,
     /// @notice Set the default feedback volume for relayed feedback
     /// @param _volumeUsd Volume in USD cents
     function setDefaultFeedbackVolumeUsd(uint256 _volumeUsd) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_volumeUsd > 1_000_000_00) revert ValueOverflow();
         defaultFeedbackVolumeUsd = _volumeUsd;
     }
 

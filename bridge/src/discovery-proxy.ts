@@ -90,7 +90,7 @@ export function createDiscoveryProxy(nodeUrl?: string): Router {
     }
   });
 
-  router.get('/discovery/agents/:did(*)', async (req: Request, res: Response) => {
+  router.get('/discovery/agents/:did', async (req: Request<{ did: string }>, res: Response) => {
     if (!requireNodeUrl(res)) return;
 
     const did = req.params.did;

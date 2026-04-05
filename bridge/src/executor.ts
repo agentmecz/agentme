@@ -19,7 +19,7 @@ export interface ExecutorOptions {
  * Characters like $, {, }, !, \ are safe with shell: false and commonly
  * appear in legitimate prompts (e.g., "$variable", "if (x) { ... }", "don't!").
  */
-const DANGEROUS_SHELL_CHARS = /[;|&`<>]/;
+const DANGEROUS_SHELL_CHARS = /[;|&`<>\n\r]/;
 
 /**
  * Executor pro spouštění Claude Code a dalších příkazů

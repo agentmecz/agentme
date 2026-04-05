@@ -910,7 +910,7 @@ export class BridgeServer {
     });
 
     // Get task status (supports polling: pending -> completed/failed -> 404 after TTL)
-    this.app.get('/task/:taskId', taskAuthMiddleware, (req: Request, res: Response) => {
+    this.app.get('/task/:taskId', taskAuthMiddleware, (req: Request<{ taskId: string }>, res: Response) => {
       const taskId = req.params.taskId;
       // Identity from auth middleware (FreeTier or DID:key) and/or x-client-did header
       const pollIdentity = (req as DIDRequest).didIdentity;
@@ -960,7 +960,7 @@ export class BridgeServer {
     });
 
     // Cancel task
-    this.app.delete('/task/:taskId', taskAuthMiddleware, (req: Request, res: Response) => {
+    this.app.delete('/task/:taskId', taskAuthMiddleware, (req: Request<{ taskId: string }>, res: Response) => {
       const task = this.pendingTasks.get(req.params.taskId);
       if (!task) {
         return res.status(404).json(buildRichError(

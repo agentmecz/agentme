@@ -31,6 +31,8 @@ describe('DID Validation', () => {
           'did:agoramesh:ethereum:ABC123',
           'did:agoramesh:polygon:testAgent42',
           'did:agoramesh:arbitrum:myAgent',
+          'did:agoramesh:base-sepolia:abc123',
+          'did:agoramesh:optimism-goerli:agent1',
         ];
 
         for (const did of validDIDs) {
@@ -43,6 +45,10 @@ describe('DID Validation', () => {
           'did:web:base:abc123',
           'did:web:ethereum:ABC123',
           'did:web:polygon:testAgent42',
+          'did:web:example.com',
+          'did:web:w3c-ccg.github.io',
+          'did:web:example.com:user:alice',
+          'did:web:api.example.com:agents:123',
         ];
 
         for (const did of validDIDs) {

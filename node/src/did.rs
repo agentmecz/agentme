@@ -435,11 +435,43 @@ pub struct DIDDocumentMetadata {
     pub deactivated: Option<bool>,
 }
 
+/// Convert a Unix timestamp (seconds since 1970-01-01T00:00:00Z) to RFC 3339 format.
+///
+/// W3C DID Core §7.1 requires `created` and `updated` in DID Document Metadata
+/// to use XML Datetime (RFC 3339), e.g. `"2026-04-05T12:34:56Z"`.
+///
+/// Uses Howard Hinnant's civil_from_days algorithm (same as chrono/C++ stdlib).
+fn unix_to_rfc3339(timestamp: u64) -> String {
+    let day_secs = 86_400_u64;
+    let days = (timestamp / day_secs) as i64;
+    let time = timestamp % day_secs;
+    let hours = time / 3600;
+    let minutes = (time % 3600) / 60;
+    let seconds = time % 60;
+
+    // civil_from_days: convert days since Unix epoch to (year, month, day)
+    let z = days + 719_468;
+    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hours, minutes, seconds
+    )
+}
+
 impl DIDResolutionResult {
     /// Create a successful resolution result.
     pub fn success(document: DIDDocument) -> Self {
-        let created = document.metadata.as_ref().map(|m| m.created.to_string());
-        let updated = document.metadata.as_ref().map(|m| m.updated.to_string());
+        let created = document.metadata.as_ref().map(|m| unix_to_rfc3339(m.created));
+        let updated = document.metadata.as_ref().map(|m| unix_to_rfc3339(m.updated));
         Self {
             did_document: Some(document),
             did_resolution_metadata: DIDResolutionMetadata {
@@ -759,6 +791,38 @@ mod tests {
             result.did_resolution_metadata.content_type,
             Some("application/did+ld+json".to_string())
         );
+
+        // W3C DID Core requires RFC 3339 timestamps, not Unix
+        let meta = result.did_document_metadata.unwrap();
+        let created = meta.created.unwrap();
+        let updated = meta.updated.unwrap();
+        // Must match RFC 3339 pattern: YYYY-MM-DDTHH:MM:SSZ
+        assert!(
+            created.contains('T') && created.ends_with('Z'),
+            "created timestamp must be RFC 3339, got: {}",
+            created
+        );
+        assert!(
+            updated.contains('T') && updated.ends_with('Z'),
+            "updated timestamp must be RFC 3339, got: {}",
+            updated
+        );
+    }
+
+    #[test]
+    fn test_unix_to_rfc3339_conversion() {
+        // Verified against GNU date -u -d @<timestamp>
+        assert_eq!(super::unix_to_rfc3339(0), "1970-01-01T00:00:00Z");
+        assert_eq!(
+            super::unix_to_rfc3339(1712355678),
+            "2024-04-05T22:21:18Z"
+        );
+        assert_eq!(
+            super::unix_to_rfc3339(1000000000),
+            "2001-09-09T01:46:40Z"
+        );
+        // Leap day
+        assert_eq!(super::unix_to_rfc3339(951782400), "2000-02-29T00:00:00Z");
     }
 
     #[test]

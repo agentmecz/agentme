@@ -41,8 +41,8 @@ export const A2A_ERRORS = {
   METHOD_NOT_FOUND: { code: -32601, message: 'Method not found' },
   INVALID_PARAMS: { code: -32602, message: 'Invalid params' },
   INTERNAL_ERROR: { code: -32603, message: 'Internal error' },
-  TASK_NOT_FOUND: { code: -32000, message: 'Task not found' },
-  TASK_NOT_CANCELLABLE: { code: -32001, message: 'Task not cancellable' },
+  TASK_NOT_FOUND: { code: -32001, message: 'Task not found' },
+  TASK_NOT_CANCELLABLE: { code: -32002, message: 'Task not cancellable' },
 } as const;
 
 // =============================================================================

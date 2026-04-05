@@ -19,7 +19,7 @@ interface TrustEndpointConfig {
 export function createTrustEndpoint(config: TrustEndpointConfig): Router {
   const router = Router();
 
-  router.get('/trust/:did(*)', async (req: Request, res: Response) => {
+  router.get('/trust/:did', async (req: Request<{ did: string }>, res: Response) => {
     const did = req.params.did;
 
     if (!DID_FORMAT.test(did)) {

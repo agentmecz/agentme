@@ -667,6 +667,30 @@ contract ERC8004AdapterTest is Test {
         adapter.setDefaultFeedbackVolumeUsd(500_00);
     }
 
+    function test_SetCanonicalIdentityRegistry_ZeroAddress_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(ERC8004Adapter.ZeroAddress.selector);
+        adapter.setCanonicalIdentityRegistry(address(0));
+    }
+
+    function test_SetCanonicalReputationRegistry_ZeroAddress_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(ERC8004Adapter.ZeroAddress.selector);
+        adapter.setCanonicalReputationRegistry(address(0));
+    }
+
+    function test_SetDefaultFeedbackVolumeUsd_Overflow_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(ERC8004Adapter.ValueOverflow.selector);
+        adapter.setDefaultFeedbackVolumeUsd(1_000_000_01);
+    }
+
+    function test_SetDefaultFeedbackVolumeUsd_MaxValue() public {
+        vm.prank(admin);
+        adapter.setDefaultFeedbackVolumeUsd(1_000_000_00);
+        assertEq(adapter.defaultFeedbackVolumeUsd(), 1_000_000_00);
+    }
+
     // ============ Integration: Feedback Relay Updates Trust Score ============
 
     function test_Integration_FeedbackRelayAffectsTrustScore() public {

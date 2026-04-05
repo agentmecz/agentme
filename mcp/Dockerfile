@@ -22,6 +22,9 @@ RUN npm run build
 # ==============================================================================
 FROM node:22-alpine3.21 AS production
 
+# Install tini for proper PID 1 signal handling
+RUN apk add --no-cache tini
+
 # Security: Create non-root user
 RUN addgroup -g 1001 -S agoramesh && \
     adduser -u 1001 -S agoramesh -G agoramesh
@@ -51,4 +54,5 @@ EXPOSE 3403
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget -qO- http://127.0.0.1:3403/health || exit 1
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/http.js"]

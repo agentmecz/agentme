@@ -159,9 +159,13 @@ const TRUST_REGISTRY_ABI = [
  * - did:ethr:[address] or did:ethr:[network]:[address] - Ethereum DIDs
  */
 
-// AgoraMesh/Web DID: did:(agoramesh|web):[method]:[identifier]
-// Method must be lowercase, identifier alphanumeric
-const DID_AGORAMESH_WEB_PATTERN = /^did:(agoramesh|web):[a-z]+:[a-zA-Z0-9]+$/;
+// AgoraMesh DID: did:agoramesh:[network]:[identifier]
+// Network is lowercase alphanumeric with hyphens (e.g., base-sepolia), identifier alphanumeric
+const DID_AGORAMESH_PATTERN = /^did:agoramesh:[a-z0-9-]+:[a-zA-Z0-9]+$/;
+
+// Web DID: did:web:[domain](:[path])*
+// Domain allows dots/hyphens per W3C did:web spec, optional colon-separated path segments
+const DID_WEB_PATTERN = /^did:web:[a-zA-Z0-9.-]+(:[a-zA-Z0-9._%-]*)*$/;
 
 // Key DID: did:key:z[base58-multicodec-key]
 // Must start with 'z' (multibase prefix for base58btc) followed by alphanumeric chars
@@ -201,12 +205,20 @@ export function validateDID(did: string): void {
   }
 
   // Check which DID method is being used and validate accordingly
-  if (did.startsWith('did:agoramesh:') || did.startsWith('did:web:')) {
-    if (!DID_AGORAMESH_WEB_PATTERN.test(did)) {
+  if (did.startsWith('did:agoramesh:')) {
+    if (!DID_AGORAMESH_PATTERN.test(did)) {
       throw new AgoraMeshError(
         AgoraMeshErrorCode.INVALID_DID_FORMAT,
-        `Invalid DID format: "${did}". Expected pattern: did:agoramesh:<network>:<hex-address> or did:web:<domain>`,
-        { did, method: 'agoramesh/web' },
+        `Invalid DID format: "${did}". Expected pattern: did:agoramesh:<network>:<identifier> (e.g., did:agoramesh:base:abc123)`,
+        { did, method: 'agoramesh' },
+      );
+    }
+  } else if (did.startsWith('did:web:')) {
+    if (!DID_WEB_PATTERN.test(did)) {
+      throw new AgoraMeshError(
+        AgoraMeshErrorCode.INVALID_DID_FORMAT,
+        `Invalid DID format: "${did}". Expected pattern: did:web:<domain>(:<path>)* (e.g., did:web:example.com:user:alice)`,
+        { did, method: 'web' },
       );
     }
   } else if (did.startsWith('did:key:')) {
