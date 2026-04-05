@@ -227,9 +227,7 @@ impl HybridSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::{
-        AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill,
-    };
+    use crate::discovery::{AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill};
 
     fn sample_card(
         did: &str,

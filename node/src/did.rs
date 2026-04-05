@@ -470,8 +470,14 @@ fn unix_to_rfc3339(timestamp: u64) -> String {
 impl DIDResolutionResult {
     /// Create a successful resolution result.
     pub fn success(document: DIDDocument) -> Self {
-        let created = document.metadata.as_ref().map(|m| unix_to_rfc3339(m.created));
-        let updated = document.metadata.as_ref().map(|m| unix_to_rfc3339(m.updated));
+        let created = document
+            .metadata
+            .as_ref()
+            .map(|m| unix_to_rfc3339(m.created));
+        let updated = document
+            .metadata
+            .as_ref()
+            .map(|m| unix_to_rfc3339(m.updated));
         Self {
             did_document: Some(document),
             did_resolution_metadata: DIDResolutionMetadata {
@@ -813,14 +819,8 @@ mod tests {
     fn test_unix_to_rfc3339_conversion() {
         // Verified against GNU date -u -d @<timestamp>
         assert_eq!(super::unix_to_rfc3339(0), "1970-01-01T00:00:00Z");
-        assert_eq!(
-            super::unix_to_rfc3339(1712355678),
-            "2024-04-05T22:21:18Z"
-        );
-        assert_eq!(
-            super::unix_to_rfc3339(1000000000),
-            "2001-09-09T01:46:40Z"
-        );
+        assert_eq!(super::unix_to_rfc3339(1712355678), "2024-04-05T22:21:18Z");
+        assert_eq!(super::unix_to_rfc3339(1000000000), "2001-09-09T01:46:40Z");
         // Leap day
         assert_eq!(super::unix_to_rfc3339(951782400), "2000-02-29T00:00:00Z");
     }

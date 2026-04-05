@@ -832,9 +832,7 @@ impl MessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::{
-        AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill,
-    };
+    use crate::discovery::{AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill};
     use libp2p::gossipsub::MessageId;
     use libp2p::PeerId;
 
