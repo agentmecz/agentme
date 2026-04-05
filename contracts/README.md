@@ -10,7 +10,8 @@ Solidity smart contracts for the AgoraMesh trust layer, escrow system, dispute r
 |----------|-------------|
 | **TrustRegistry** | Agent registration, reputation tracking, staking, and endorsements. Central trust layer for the marketplace. |
 | **AgoraMeshEscrow** | USDC escrow for agent-to-agent transactions with delivery confirmation and dispute hooks. |
-| **TieredDisputeResolution** | Three-tier dispute system: automatic (<$10), AI-assisted ($10-$1000), and community arbitration (>$1000). |
+| **TieredDisputeResolution** | Three-tier dispute system: automatic (<$10), AI-assisted ($10-$1000), and community arbitration (>$1000). Uses Chainlink VRF v2.5 for tamper-proof arbiter selection. |
+| **OracleConsensus** | Multi-oracle reputation reporting with optimistic submission, 2-of-3 challenge resolution, and bond slashing. |
 
 ### Payments
 
@@ -24,12 +25,14 @@ Solidity smart contracts for the AgoraMesh trust layer, escrow system, dispute r
 |----------|-------------|
 | **AgentToken** | ERC-721 NFTs representing AI agent ownership with ERC-2981 royalties and revenue distribution. |
 | **NFTBoundReputation** | Reputation scores bound to AgentToken NFTs that transfer with the token. |
-| **VerifiedNamespaces** | Organization namespace registry for agent verification (ENS-inspired). |
+| **VerifiedNamespaces** | Organization namespace registry with 1 USDC registration fee and 365-day expiration for unverified namespaces. |
 
-### Cross-Chain
+### Bridges & Cross-Chain
 
 | Contract | Description |
 |----------|-------------|
+| **ERC8004Bridge** | ERC-8004 standard bridge with `AccessControlEnumerable` and `BRIDGE_OPERATOR_ROLE`. |
+| **ERC8004Adapter** | Adapter for ERC-8004 standard integration with zero-address validation. |
 | **CrossChainTrustSync** | Trust score synchronization across chains (LayerZero V2 OApp-ready). |
 | **ChainRegistry** | Multi-chain network configuration registry. |
 
@@ -81,7 +84,8 @@ Test files:
 - `NFTBoundReputation.t.sol` -- Reputation bound to NFTs
 - `CrossChainTrustSync.t.sol` -- Cross-chain trust syncing
 - `ChainRegistry.t.sol` -- Chain configuration
-- `VerifiedNamespaces.t.sol` -- Namespace registration and verification
+- `VerifiedNamespaces.t.sol` -- Namespace registration, fees, and expiration
+- `OracleConsensus.t.sol` -- Multi-oracle submission, challenges, and slashing
 - `Integration.t.sol` -- End-to-end multi-contract flows
 - `Deploy.t.sol` -- Deployment script validation
 
@@ -170,7 +174,11 @@ All contracts use:
 - OpenZeppelin `ReentrancyGuard` for reentrancy protection
 - OpenZeppelin `SafeERC20` for safe token transfers
 - Checks-effects-interactions pattern
-- Explicit role separation (ORACLE_ROLE, ARBITER_ROLE, VERIFIER_ROLE)
+- Explicit role separation (`ORACLE_ROLE`, `ARBITER_ROLE`, `VERIFIER_ROLE`, `BRIDGE_OPERATOR_ROLE`)
+- Chainlink VRF v2.5 for verifiable random arbiter selection in disputes
+- Constructor-level zero-address validation for all registry and admin parameters
+- Multiply-before-divide ordering to prevent precision loss in reputation calculations
+- Dust threshold (10 wei) for streaming payment completion to handle rounding
 
 ## License
 

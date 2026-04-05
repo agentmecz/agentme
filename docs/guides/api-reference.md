@@ -276,6 +276,147 @@ curl "http://localhost:8080/trust/did%3Aagoramesh%3Abase%3Aagent-001"
 
 ---
 
+## A2A v1.0.0 Endpoints
+
+The node and bridge support A2A v1.0.0 JSON-RPC methods and REST-style path aliases.
+
+### JSON-RPC Methods
+
+The bridge accepts A2A JSON-RPC requests at `POST /`:
+
+| Method | Description |
+|--------|-------------|
+| `SendMessage` | Submit a task message to the agent |
+| `SendStreamingMessage` | Submit a task with SSE streaming response |
+| `GetTask` | Get task status and result |
+| `CancelTask` | Cancel a running task |
+| `SubscribeToTask` | Subscribe to task updates via SSE |
+| `ListTasks` | List tasks, optionally filtered by status |
+
+Legacy method names (`tasks/send`, `tasks/get`, `tasks/cancel`) are accepted as aliases for backward compatibility.
+
+**Example (JSON-RPC):**
+```bash
+curl -X POST http://localhost:3402/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"SendMessage","params":{"message":{"role":"user","parts":[{"type":"text","text":"Hello"}]},"contextId":"ctx-123"},"id":1}'
+```
+
+---
+
+### REST Path Aliases
+
+REST-style endpoints that map to JSON-RPC methods:
+
+| Method | Path | Maps To |
+|--------|------|---------|
+| POST | `/message:send` | `SendMessage` |
+| POST | `/message:stream` | `SendStreamingMessage` |
+| GET | `/tasks/{id}` | `GetTask` |
+| POST | `/tasks/{id}:cancel` | `CancelTask` |
+| GET | `/tasks` | `ListTasks` |
+
+---
+
+### SSE Streaming
+
+`SendStreamingMessage` and `SubscribeToTask` return `text/event-stream` responses:
+
+```
+POST /message:stream HTTP/1.1
+Content-Type: application/json
+Authorization: FreeTier my-agent
+
+{"message":{"role":"user","parts":[{"type":"text","text":"Explain async/await"}]},"contextId":"ctx-1"}
+```
+
+**Response** `200 OK` — `text/event-stream`
+```
+event: task-status
+data: {"taskId":"t-123","status":"TASK_STATE_WORKING","contextId":"ctx-1"}
+
+event: task-artifact
+data: {"taskId":"t-123","artifact":{"parts":[{"type":"text","text":"async/await is..."}]}}
+
+event: task-status
+data: {"taskId":"t-123","status":"TASK_STATE_COMPLETED"}
+```
+
+---
+
+### contextId (Multi-Turn Conversations)
+
+The `contextId` field enables multi-turn conversations by linking related tasks:
+
+```json
+{
+  "method": "SendMessage",
+  "params": {
+    "contextId": "ctx-abc123",
+    "message": {
+      "role": "user",
+      "parts": [{"type": "text", "text": "Now refactor that code"}]
+    }
+  }
+}
+```
+
+When a `contextId` is provided, the bridge injects prior task context from the same conversation into the agent's prompt. If omitted, the bridge generates a new `contextId` and returns it in the response.
+
+---
+
+### Task States
+
+| Wire State | Internal | Description |
+|------------|----------|-------------|
+| `TASK_STATE_SUBMITTED` | `submitted` | Task received, queued |
+| `TASK_STATE_WORKING` | `working` | Agent is processing |
+| `TASK_STATE_COMPLETED` | `completed` | Task finished successfully |
+| `TASK_STATE_FAILED` | `failed` | Task failed |
+| `TASK_STATE_CANCELED` | `canceled` | Task was cancelled |
+| `TASK_STATE_INPUT_REQUIRED` | `input_required` | Agent needs additional input |
+| `TASK_STATE_AUTH_REQUIRED` | `auth_required` | Authentication required |
+| `TASK_STATE_REJECTED` | `rejected` | Task rejected by agent |
+
+---
+
+### `GET /tasks`
+
+List tasks, optionally filtered by status.
+
+**Query Parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `status` | string | Filter by task state (e.g., `completed`, `working`) |
+| `contextId` | string | Filter by conversation context |
+
+**Response** `200 OK` — Array of task objects
+
+---
+
+### Message Parts
+
+A2A v1.0.0 messages support multiple part types:
+
+| Type | Description | Fields |
+|------|-------------|--------|
+| `text` | Plain text content | `text` |
+| `data` | Structured JSON data | `data`, `mimeType` |
+| `raw` | Base64-encoded binary | `data` (base64), `mimeType` |
+| `url` | URL reference | `url`, `mimeType` |
+
+```json
+{
+  "parts": [
+    {"type": "text", "text": "Review this image:"},
+    {"type": "url", "url": "https://example.com/screenshot.png", "mimeType": "image/png"}
+  ]
+}
+```
+
+---
+
 ## Error Format
 
 All error responses use:

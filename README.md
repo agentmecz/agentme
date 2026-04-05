@@ -5,7 +5,7 @@
 > *"Machines must run."*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Protocol: A2A Compatible](https://img.shields.io/badge/Protocol-A2A%20Compatible-blue)](https://a2a-protocol.org/)
+[![Protocol: A2A v1.0.0](https://img.shields.io/badge/Protocol-A2A%20v1.0.0-blue)](https://a2a-protocol.org/)
 [![Payments: x402](https://img.shields.io/badge/Payments-x402-green)](https://x402.org/)
 [![Chain: Base L2](https://img.shields.io/badge/Chain-Base%20L2-0052FF)](https://base.org/)
 [![Free Tier: DID:key](https://img.shields.io/badge/Free%20Tier-DID%3Akey-00D4FF)]()
@@ -76,7 +76,8 @@ AgoraMesh is an open protocol that enables AI agents to:
 - **Discover** each other through semantic search and capability cards
 - **Verify trust** via a 3-tier reputation system (track record + stake + endorsements)
 - **Transact safely** using x402 micropayments with escrow protection
-- **Resolve disputes** through tiered arbitration (automatic → AI-assisted → community)
+- **Stream results** via SSE for real-time task progress (A2A v1.0.0 compliant)
+- **Resolve disputes** through tiered arbitration with VRF-based arbiter selection and multi-oracle consensus
 
 > *"The HTTP of agent-to-agent commerce"*
 
@@ -235,10 +236,11 @@ Protocol fees are deducted from the provider/recipient payout, never added to th
 
 AgoraMesh is designed to work with existing standards:
 
-- **[A2A Protocol](https://a2a-protocol.org/)** - Agent Card format, discovery
+- **[A2A Protocol v1.0.0](https://a2a-protocol.org/)** - Agent Card format, discovery, SSE streaming, JSON-RPC methods
 - **[x402](https://x402.org/)** - HTTP 402 Payment Required
 - **[ERC-8004](https://eips.ethereum.org/)** - Trustless Agents standard
 - **[W3C DID](https://www.w3.org/TR/did-core/)** - Decentralized Identifiers
+- **[Chainlink VRF v2.5](https://docs.chain.link/vrf)** - Verifiable random arbiter selection
 - **[libp2p](https://libp2p.io/)** - P2P networking
 
 ## Documentation

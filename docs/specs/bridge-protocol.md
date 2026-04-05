@@ -12,6 +12,68 @@ The AgoraMesh Bridge enables local AI agents to connect to the AgoraMesh network
        P2P               HTTP/WebSocket           CLI/Process
 ```
 
+## A2A v1.0.0 Protocol Support
+
+The bridge implements the A2A v1.0.0 specification with JSON-RPC methods and SSE streaming.
+
+### JSON-RPC Methods
+
+| Method | Description |
+|--------|-------------|
+| `SendMessage` | Submit a task message |
+| `SendStreamingMessage` | Submit with SSE streaming response |
+| `GetTask` | Get task status and result |
+| `CancelTask` | Cancel a running task |
+| `SubscribeToTask` | Subscribe to task updates via SSE |
+| `ListTasks` | List tasks with optional status filter |
+
+Legacy method names (`tasks/send`, `tasks/get`, `tasks/cancel`) are accepted as aliases.
+
+### SSE Streaming Protocol
+
+`SendStreamingMessage` and `SubscribeToTask` return `text/event-stream` responses with the following event types:
+
+| Event | Description |
+|-------|-------------|
+| `task-status` | Task state transition (e.g., `TASK_STATE_WORKING` → `TASK_STATE_COMPLETED`) |
+| `task-artifact` | Incremental task output (partial results, files, etc.) |
+| `task-error` | Error during task execution |
+
+**Stream lifecycle:**
+1. Client sends `SendStreamingMessage` request
+2. Bridge returns `200 OK` with `Content-Type: text/event-stream`
+3. Bridge emits `task-status` events as state transitions occur
+4. Bridge emits `task-artifact` events as output is produced
+5. Stream closes with a terminal `task-status` event (`COMPLETED`, `FAILED`, `CANCELED`, `REJECTED`)
+
+### Message Parts
+
+A2A v1.0.0 messages support multi-type parts:
+
+| Type | Description | Fields |
+|------|-------------|--------|
+| `text` | Plain text content | `text` |
+| `data` | Structured JSON data | `data`, `mimeType` |
+| `raw` | Base64-encoded binary | `data` (base64), `mimeType` |
+| `url` | URL reference | `url`, `mimeType` |
+
+Parts are validated by the bridge and assembled into a prompt for the executor. Artifact responses use the same part format with an `artifactId` field for binary content identification.
+
+### securitySchemes
+
+The Agent Card includes OpenAPI 3.2 `securitySchemes` describing supported authentication methods:
+
+```json
+{
+  "authentication": {
+    "schemes": ["did", "bearer"],
+    "didMethods": ["did:agoramesh", "did:key"]
+  }
+}
+```
+
+---
+
 ## Task Schema
 
 ### TaskInput
@@ -53,8 +115,8 @@ interface TaskResult {
   // Matches the input taskId
   taskId: string;
   
-  // Outcome
-  status: 'completed' | 'failed' | 'timeout';
+  // Outcome (A2A v1.0.0 wire states)
+  status: 'completed' | 'failed' | 'timeout' | 'input_required' | 'auth_required' | 'rejected';
   
   // Task output (if completed)
   output?: string;
@@ -84,6 +146,10 @@ interface TaskResult {
 | POST | `/task?wait=true` | Submit a task and wait for result (sync, 60s timeout) |
 | GET | `/task/:taskId` | Get task status / poll for result |
 | DELETE | `/task/:taskId` | Cancel task |
+| POST | `/message:send` | A2A v1.0 — Submit message (REST alias for SendMessage) |
+| POST | `/message:stream` | A2A v1.0 — Submit message with SSE streaming |
+| POST | `/tasks/{id}:cancel` | A2A v1.0 — Cancel task (REST alias for CancelTask) |
+| GET | `/tasks` | A2A v1.0 — List tasks with optional status filter |
 
 Both `/.well-known/agent.json` and `/.well-known/agent-card.json` return the same capability card JSON. The primary endpoint follows the A2A v1.0 convention; the alias exists for tooling compatibility.
 
