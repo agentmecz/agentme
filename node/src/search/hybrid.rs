@@ -98,9 +98,9 @@ impl HybridSearch {
             .ok_or_else(|| Error::Search("Card missing DID".to_string()))?;
 
         // Create text for embedding
-        let capabilities: Vec<String> = card.capabilities.iter().map(|c| c.name.clone()).collect();
+        let skills: Vec<String> = card.skills.iter().map(|c| c.name.clone()).collect();
 
-        let text = EmbeddingService::card_to_text(&card.name, &card.description, &capabilities);
+        let text = EmbeddingService::card_to_text(&card.name, &card.description, &skills);
 
         // Generate embedding
         let embedding = self.embedding_service.embed(&text).await?;
@@ -184,7 +184,7 @@ impl HybridSearch {
             "{} {} {}",
             card.name,
             card.description,
-            card.capabilities
+            card.skills
                 .iter()
                 .map(|c| format!("{} {}", c.name, c.description.as_deref().unwrap_or("")))
                 .collect::<Vec<_>>()
@@ -228,14 +228,14 @@ impl HybridSearch {
 mod tests {
     use super::*;
     use crate::discovery::{
-        AgoraMeshExtension, Capability, PricingInfo, PricingModel, ProviderInfo,
+        AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill,
     };
 
     fn sample_card(
         did: &str,
         name: &str,
         description: &str,
-        capabilities: Vec<&str>,
+        skill_names: Vec<&str>,
     ) -> CapabilityCard {
         CapabilityCard {
             name: name.to_string(),
@@ -248,12 +248,12 @@ mod tests {
                 organization: "Test Org".to_string(),
                 url: None,
             }),
-            capabilities: capabilities
+            skills: skill_names
                 .into_iter()
-                .map(|c| Capability {
+                .map(|c| Skill {
                     id: c.to_lowercase().replace(' ', "-"),
                     name: c.to_string(),
-                    description: Some(format!("{} capability", c)),
+                    description: Some(format!("{} skill", c)),
                     input_schema: None,
                     output_schema: None,
                 })

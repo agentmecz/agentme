@@ -582,7 +582,7 @@ describe('AgoraMesh E2E Integration', () => {
         name: 'E2E Test Provider',
         description: 'End-to-end test provider agent for code review and debugging',
         url: BRIDGE_URL,
-        capabilities: [
+        skills: [
           { id: 'code-review', name: 'Code Review', description: 'Review code for bugs and improvements' },
           { id: 'debugging', name: 'Debugging', description: 'Debug and fix code issues' },
         ],

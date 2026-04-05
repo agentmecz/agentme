@@ -9,6 +9,8 @@ interface SearchResult {
   description?: string;
   trust?: { score?: number; tier?: string };
   // Semantic search results may include these directly
+  skills?: { id?: string; name?: string }[] | string[];
+  /** @deprecated Use skills instead */
   capabilities?: { id?: string; name?: string }[] | string[];
   pricing?: { model?: string; amount?: string; currency?: string };
   matchingSkills?: string[];
@@ -43,12 +45,13 @@ export function formatAgent(agent: unknown): string {
     lines.push(`- **Description**: ${a.description}`);
   }
 
-  // Capabilities — array of objects or strings
-  if (Array.isArray(a.capabilities) && a.capabilities.length > 0) {
-    const names = a.capabilities.map((c) =>
+  // Skills (or legacy capabilities) — array of objects or strings
+  const skillsArr = a.skills ?? a.capabilities;
+  if (Array.isArray(skillsArr) && skillsArr.length > 0) {
+    const names = skillsArr.map((c: unknown) =>
       typeof c === 'string' ? c : (c as { name?: string }).name ?? (c as { id?: string }).id ?? '?'
     );
-    lines.push(`- **Capabilities**: ${names.join(', ')}`);
+    lines.push(`- **Skills**: ${names.join(', ')}`);
   }
 
   if (a.matchingSkills?.length) {

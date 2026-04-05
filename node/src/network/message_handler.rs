@@ -833,7 +833,7 @@ impl MessageHandler {
 mod tests {
     use super::*;
     use crate::discovery::{
-        AgoraMeshExtension, Capability, PricingInfo, PricingModel, ProviderInfo,
+        AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill,
     };
     use libp2p::gossipsub::MessageId;
     use libp2p::PeerId;
@@ -847,10 +847,10 @@ mod tests {
                 organization: "Test Org".to_string(),
                 url: None,
             }),
-            capabilities: vec![Capability {
+            skills: vec![Skill {
                 id: "test".to_string(),
-                name: "Test Capability".to_string(),
-                description: Some("A test capability".to_string()),
+                name: "Test Skill".to_string(),
+                description: Some("A test skill".to_string()),
                 input_schema: None,
                 output_schema: None,
             }],

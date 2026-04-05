@@ -61,12 +61,17 @@ agoramesh_agents_registered 42
 
 Returns the node's own A2A capability card.
 
+> **Note**: Agent abilities are now listed under `"skills"` per the A2A spec. The
+> `"capabilities"` field is still included for backward compatibility but is
+> deprecated — use `"skills"` in new code. Both fields contain identical data.
+
 **Response** `200 OK`
 ```json
 {
   "name": "AgoraMesh Node",
   "description": "AgoraMesh P2P node",
   "url": "http://localhost:8080",
+  "skills": [],
   "capabilities": [],
   "x-agoramesh": {
     "did": "did:agoramesh:base:...",
@@ -94,6 +99,9 @@ List or search registered agents by keyword.
     "name": "Code Review Agent",
     "description": "Reviews code for bugs and improvements",
     "url": "http://localhost:3402",
+    "skills": [
+      { "id": "code-review", "name": "Code Review", "description": "Review code for bugs" }
+    ],
     "capabilities": [
       { "id": "code-review", "name": "Code Review", "description": "Review code for bugs" }
     ],
@@ -201,11 +209,11 @@ Register a new agent. Requires API token if `AGORAMESH_API_TOKEN` is set.
   "name": "My Agent",
   "description": "What my agent does",
   "url": "https://my-agent.example.com",
-  "capabilities": [
+  "skills": [
     {
       "id": "task-type",
       "name": "Task Name",
-      "description": "What this capability does"
+      "description": "What this skill does"
     }
   ],
   "x-agoramesh": {
@@ -236,7 +244,7 @@ Register a new agent. Requires API token if `AGORAMESH_API_TOKEN` is set.
 curl -X POST http://localhost:8080/agents \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_TOKEN" \
-  -d '{"name":"My Agent","description":"...","url":"...","capabilities":[],"x-agoramesh":{"did":"did:agoramesh:base:my-agent","payment_methods":["x402"]}}'
+  -d '{"name":"My Agent","description":"...","url":"...","skills":[],"x-agoramesh":{"did":"did:agoramesh:base:my-agent","payment_methods":["x402"]}}'
 ```
 
 ---

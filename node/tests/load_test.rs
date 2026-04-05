@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use agoramesh_node::{
-    discovery::{AgoraMeshExtension, Capability, CapabilityCard},
+    discovery::{AgoraMeshExtension, CapabilityCard, Skill},
     trust::TrustInfo,
     AIArbitrationConfig, AIArbitrator, Evidence, EvidenceType, JurorPool, JurorPoolConfig,
     TrustCache, TrustCacheConfig,
@@ -542,7 +542,7 @@ fn create_test_card(did: &str) -> CapabilityCard {
                 .to_string(),
         url: "https://agent.example.com/a2a".to_string(),
         provider: None,
-        capabilities: vec![Capability {
+        skills: vec![Skill {
             id: "code-review".to_string(),
             name: "Code Review".to_string(),
             description: Some("Automated code review service".to_string()),

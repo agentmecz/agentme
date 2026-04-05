@@ -197,11 +197,11 @@ impl EmbeddingService {
 
     /// Create text for embedding from a capability card.
     ///
-    /// Combines name, description, and capabilities into a single text
+    /// Combines name, description, and skills into a single text
     /// suitable for semantic embedding.
-    pub fn card_to_text(name: &str, description: &str, capabilities: &[String]) -> String {
-        let caps = capabilities.join(", ");
-        format!("{}: {}. Capabilities: {}", name, description, caps)
+    pub fn card_to_text(name: &str, description: &str, skills: &[String]) -> String {
+        let skill_text = skills.join(", ");
+        format!("{}: {}. Skills: {}", name, description, skill_text)
     }
 
     /// Get cache statistics.
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn test_card_to_text_handles_empty_capabilities() {
+    fn test_card_to_text_handles_empty_skills() {
         let text = EmbeddingService::card_to_text("Agent", "Description", &[]);
 
         assert!(text.contains("Agent"));

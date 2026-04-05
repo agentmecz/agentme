@@ -20,12 +20,13 @@ interface AgentData {
   name?: string;
   description?: string;
   url?: string;
+  skills?: Capability[];
+  /** @deprecated Use skills instead */
   capabilities?: Capability[];
   'x-agoramesh'?: AgoraMeshMeta;
   // Fallback fields for other API shapes
   did?: string;
   trust?: { score?: number; tier?: string };
-  skills?: { name?: string; description?: string }[];
 }
 
 function formatUsdc(raw: number): string {
@@ -68,14 +69,14 @@ function formatAgent(agent: AgentData): string {
     lines.push(`- **Price**: $${price} ${currency}${model}`);
   }
 
-  // Capabilities (array from node API)
-  const caps = agent.capabilities;
-  if (Array.isArray(caps) && caps.length > 0) {
+  // Skills (or legacy capabilities) from node API
+  const agentSkills = agent.skills ?? agent.capabilities;
+  if (Array.isArray(agentSkills) && agentSkills.length > 0) {
     lines.push('');
-    lines.push('## Capabilities');
-    for (const cap of caps) {
-      const name = (cap as Capability).name ?? (cap as Capability).id ?? 'Unknown';
-      const desc = (cap as Capability).description;
+    lines.push('## Skills');
+    for (const skill of agentSkills) {
+      const name = (skill as Capability).name ?? (skill as Capability).id ?? 'Unknown';
+      const desc = (skill as Capability).description;
       lines.push(`- **${name}**${desc ? `: ${desc}` : ''}`);
     }
   }
@@ -96,7 +97,7 @@ export function registerGetAgent(server: McpServer, client: NodeClient): void {
   server.registerTool(
     'get_agent',
     {
-      description: 'Get full details for an agent by DID, including capabilities, skills, pricing, and trust info.',
+      description: 'Get full details for an agent by DID, including skills, pricing, and trust info.',
       inputSchema: z.object({
         did: z.string().describe('The DID of the agent to look up'),
       }),

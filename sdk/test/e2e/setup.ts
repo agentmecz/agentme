@@ -829,7 +829,7 @@ export function createMockFetch() {
             name: card.name,
             description: card.description,
             url: card.url,
-            capabilities: card.skills.map((s) => ({
+            skills: card.skills.map((s) => ({
               id: s.id,
               name: s.name,
               description: s.description,
@@ -871,7 +871,7 @@ export function createMockFetch() {
           name: card.name,
           description: card.description,
           url: card.url,
-          capabilities: card.skills.map((s) => ({
+          skills: card.skills.map((s) => ({
             id: s.id,
             name: s.name,
             description: s.description,

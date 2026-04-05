@@ -93,8 +93,8 @@ export interface AgentInfo {
   trust: number;
   /** Price per request in USDC */
   price?: string;
-  /** Capabilities list */
-  capabilities: string[];
+  /** Skills list (what the agent can do) */
+  skills: string[];
   /** Raw discovery result (for advanced use) */
   _raw: DiscoveryResult;
 }
@@ -165,7 +165,7 @@ export class AgoraMesh {
       url: r.url,
       trust: r.trust?.overall ?? 0,
       price: r.pricing ? String(r.pricing.amount) : undefined,
-      capabilities: (r.matchingSkills ?? []).map((s: Skill) => s.name ?? s.id),
+      skills: (r.matchingSkills ?? []).map((s: Skill) => s.name ?? s.id),
       _raw: r,
     }));
   }

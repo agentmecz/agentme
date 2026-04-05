@@ -43,7 +43,7 @@ describe('Bridge ↔ Node Integration', () => {
         name: 'Bridge Integration Test Agent',
         description: 'Test agent for bridge-node integration testing',
         url: BRIDGE_URL,
-        capabilities: [
+        skills: [
           {
             id: 'integration-test',
             name: 'Integration Testing',
@@ -196,7 +196,7 @@ describe('Bridge ↔ Node Integration', () => {
         name: bridgeCard.name,
         description: bridgeCard.description,
         url: BRIDGE_URL,
-        capabilities: bridgeCard.skills?.map(skill => ({
+        skills: bridgeCard.skills?.map(skill => ({
           id: skill.id,
           name: skill.name,
           description: skill.description

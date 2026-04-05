@@ -20,7 +20,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use std::collections::HashMap;
 
 use agoramesh_node::{
-    discovery::{AgoraMeshExtension, Capability, CapabilityCard},
+    discovery::{AgoraMeshExtension, CapabilityCard, Skill},
     network::message_handler::{DiscoveryMessage, TrustMessage},
     trust::TrustInfo,
     AIArbitrationConfig, AIArbitrator, Evidence, EvidenceType, Juror, JurorPool, JurorPoolConfig,
@@ -424,7 +424,7 @@ fn create_sample_card(did: &str) -> CapabilityCard {
                 .to_string(),
         url: "https://agent.example.com/a2a".to_string(),
         provider: None,
-        capabilities: vec![Capability {
+        skills: vec![Skill {
             id: "code-review".to_string(),
             name: "Code Review".to_string(),
             description: Some("Automated code review service".to_string()),

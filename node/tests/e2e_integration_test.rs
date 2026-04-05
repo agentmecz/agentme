@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use agoramesh_node::{
-    discovery::{AgoraMeshExtension, Capability, CapabilityCard},
+    discovery::{AgoraMeshExtension, CapabilityCard, Skill},
     trust::TrustInfo,
     AIArbitrationConfig, AIArbitrator, CircuitBreaker, CircuitBreakerConfig, CircuitState,
     DiscoveryService, Evidence, EvidenceType, JurorPool, JurorPoolConfig, TrustCache,
@@ -298,7 +298,7 @@ async fn test_discovered_agents_have_trust_data() {
         description: "An agent discovered through the network".to_string(),
         url: "https://agent.example.com/a2a".to_string(),
         provider: None,
-        capabilities: vec![Capability {
+        skills: vec![Skill {
             id: "analysis".to_string(),
             name: "Analysis".to_string(),
             description: Some("Provides analysis services".to_string()),
@@ -343,7 +343,7 @@ async fn test_search_returns_registered_agents() {
             description: "Agent for search test".to_string(),
             url: format!("https://agent{}.example.com/a2a", i),
             provider: None,
-            capabilities: vec![Capability {
+            skills: vec![Skill {
                 id: "service".to_string(),
                 name: "Service".to_string(),
                 description: Some("Generic service".to_string()),
@@ -439,7 +439,7 @@ async fn test_multi_agent_collaboration_setup() {
         ),
     ];
 
-    for (did, name, capabilities) in &agents {
+    for (did, name, skill_names) in &agents {
         let card = CapabilityCard {
             name: name.to_string(),
             description: format!("{} for multi-agent collaboration", name),
@@ -448,9 +448,9 @@ async fn test_multi_agent_collaboration_setup() {
                 did.split(':').next_back().unwrap()
             ),
             provider: None,
-            capabilities: capabilities
+            skills: skill_names
                 .iter()
-                .map(|c| Capability {
+                .map(|c| Skill {
                     id: c.to_string(),
                     name: c.to_string(),
                     description: None,
@@ -559,7 +559,7 @@ async fn test_concurrent_agent_operations() {
                 description: "Agent for concurrency test".to_string(),
                 url: format!("https://concurrent{}.example.com/a2a", i),
                 provider: None,
-                capabilities: vec![],
+                skills: vec![],
                 authentication: None,
                 agoramesh: Some(AgoraMeshExtension {
                     did: did.clone(),

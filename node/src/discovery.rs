@@ -16,7 +16,11 @@ use crate::network::SwarmCommand;
 use crate::search::HybridSearch;
 
 /// A2A-compatible Capability Card for agent discovery.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// JSON serialization emits both `"skills"` (canonical per A2A spec) and
+/// `"capabilities"` (deprecated alias) for backward compatibility.
+/// Deserialization accepts either field name.
+#[derive(Debug, Clone, Deserialize)]
 pub struct CapabilityCard {
     /// Agent name.
     pub name: String,
@@ -30,8 +34,12 @@ pub struct CapabilityCard {
     /// Provider information.
     pub provider: Option<ProviderInfo>,
 
-    /// Agent capabilities/skills.
-    pub capabilities: Vec<Capability>,
+    /// Agent skills (what the agent can do).
+    ///
+    /// Previously named "capabilities" — renamed to "skills" per A2A spec.
+    /// The JSON field "capabilities" is still accepted on deserialization.
+    #[serde(alias = "capabilities")]
+    pub skills: Vec<Skill>,
 
     /// Supported authentication methods.
     pub authentication: Option<AuthenticationInfo>,
@@ -39,6 +47,26 @@ pub struct CapabilityCard {
     /// AgoraMesh-specific extensions.
     #[serde(rename = "x-agoramesh")]
     pub agoramesh: Option<AgoraMeshExtension>,
+}
+
+impl Serialize for CapabilityCard {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("CapabilityCard", 8)?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("description", &self.description)?;
+        state.serialize_field("url", &self.url)?;
+        state.serialize_field("provider", &self.provider)?;
+        state.serialize_field("skills", &self.skills)?;
+        // Deprecated: emit "capabilities" as alias for backward compatibility
+        state.serialize_field("capabilities", &self.skills)?;
+        state.serialize_field("authentication", &self.authentication)?;
+        state.serialize_field("x-agoramesh", &self.agoramesh)?;
+        state.end()
+    }
 }
 
 /// Provider information.
@@ -51,16 +79,19 @@ pub struct ProviderInfo {
     pub url: Option<String>,
 }
 
-/// Agent capability/skill.
+/// Agent skill — what the agent can do (per A2A spec).
+///
+/// Previously named `Capability`. The type alias `Capability` is retained
+/// for backward compatibility but should not be used in new code.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Capability {
-    /// Capability ID.
+pub struct Skill {
+    /// Skill ID.
     pub id: String,
 
-    /// Capability name.
+    /// Skill name.
     pub name: String,
 
-    /// Capability description.
+    /// Skill description.
     pub description: Option<String>,
 
     /// Input schema (JSON Schema).
@@ -71,6 +102,9 @@ pub struct Capability {
     #[serde(rename = "outputSchema")]
     pub output_schema: Option<serde_json::Value>,
 }
+
+/// Deprecated type alias — use [`Skill`] instead.
+pub type Capability = Skill;
 
 /// Authentication information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -618,12 +652,12 @@ impl DiscoveryService {
             return true;
         }
 
-        // Match against capability names
-        for capability in &card.capabilities {
-            if capability.name.to_lowercase().contains(query_lower) {
+        // Match against skill names
+        for skill in &card.skills {
+            if skill.name.to_lowercase().contains(query_lower) {
                 return true;
             }
-            if let Some(desc) = &capability.description {
+            if let Some(desc) = &skill.description {
                 if desc.to_lowercase().contains(query_lower) {
                     return true;
                 }
@@ -724,7 +758,7 @@ mod tests {
                 organization: "Test Org".to_string(),
                 url: Some("https://example.com".to_string()),
             }),
-            capabilities: vec![Capability {
+            skills: vec![Skill {
                 id: "translate".to_string(),
                 name: "Translation".to_string(),
                 description: Some("Translates text".to_string()),
@@ -1511,7 +1545,7 @@ mod tests {
         let mut card = sample_capability_card("did:agoramesh:base:code-reviewer");
         card.name = "AI Code Review Agent".to_string();
         card.description = "Reviews code for bugs and improvements".to_string();
-        card.capabilities = vec![Capability {
+        card.skills = vec![Skill {
             id: "code-review".to_string(),
             name: "Code Review".to_string(),
             description: Some("Analyzes source code quality".to_string()),

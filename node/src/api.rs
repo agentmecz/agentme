@@ -342,7 +342,7 @@ async fn agent_card_handler(State(state): State<AppState>) -> Json<CapabilityCar
         description,
         url,
         provider: None,
-        capabilities: vec![],
+        skills: vec![],
         authentication: None,
         agoramesh: Some(AgoraMeshExtension {
             did,
@@ -523,7 +523,7 @@ async fn get_trust_handler(
 mod tests {
     use super::*;
     use crate::discovery::{
-        AgoraMeshExtension, Capability, PricingInfo, PricingModel, ProviderInfo,
+        AgoraMeshExtension, PricingInfo, PricingModel, ProviderInfo, Skill,
     };
     use axum_test::TestServer;
 
@@ -568,7 +568,7 @@ mod tests {
                 organization: "Test Org".to_string(),
                 url: Some("https://example.com".to_string()),
             }),
-            capabilities: vec![Capability {
+            skills: vec![Skill {
                 id: "translate".to_string(),
                 name: "Translation".to_string(),
                 description: Some("Translates text".to_string()),

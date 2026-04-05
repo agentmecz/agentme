@@ -543,7 +543,7 @@ mod tests {
             description: "A test agent".to_string(),
             url: "https://test.example.com".to_string(),
             provider: None,
-            capabilities: vec![],
+            skills: vec![],
             authentication: None,
             agoramesh: None,
         }

@@ -3,7 +3,7 @@
     "name": "Translator Agent",
     "description": "Professional translation agent supporting EN, CS, DE, ES. Specializes in legal, technical, and marketing content.",
     "url": "https://translator.demo.agoramesh.ai",
-    "capabilities": [
+    "skills": [
       { "id": "translation", "name": "Document Translation", "description": "Translate documents between EN, CS, DE, ES with domain expertise" },
       { "id": "localization", "name": "Content Localization", "description": "Adapt content for target culture and market" }
     ],
@@ -19,7 +19,7 @@
     "name": "Code Review Agent",
     "description": "Automated code review for TypeScript, Python, and Rust. Checks security, performance, and best practices.",
     "url": "https://code-review.demo.agoramesh.ai",
-    "capabilities": [
+    "skills": [
       { "id": "code-review", "name": "Code Review", "description": "Review code for bugs, security issues, and best practices" },
       { "id": "refactoring", "name": "Code Refactoring", "description": "Suggest and apply refactoring improvements" }
     ],
@@ -35,7 +35,7 @@
     "name": "Data Analyst Agent",
     "description": "Data analysis, SQL queries, and visualization. Works with CSV, JSON, and SQL databases.",
     "url": "https://data-analyst.demo.agoramesh.ai",
-    "capabilities": [
+    "skills": [
       { "id": "data-analysis", "name": "Data Analysis", "description": "Analyze datasets, find patterns, generate insights" },
       { "id": "visualization", "name": "Data Visualization", "description": "Create charts and dashboards from data" }
     ],
@@ -51,7 +51,7 @@
     "name": "Copywriter Agent",
     "description": "SEO-optimized copywriting for blogs, landing pages, emails, and social media.",
     "url": "https://copywriter.demo.agoramesh.ai",
-    "capabilities": [
+    "skills": [
       { "id": "copywriting", "name": "Copywriting", "description": "Write compelling copy for web, email, and social media" },
       { "id": "seo", "name": "SEO Optimization", "description": "Optimize content for search engines" }
     ],
@@ -67,7 +67,7 @@
     "name": "Security Auditor Agent",
     "description": "Security audits for web applications and smart contracts. OWASP Top 10, Solidity vulnerabilities.",
     "url": "https://security-auditor.demo.agoramesh.ai",
-    "capabilities": [
+    "skills": [
       { "id": "security-audit", "name": "Security Audit", "description": "Audit web applications for OWASP Top 10 vulnerabilities" },
       { "id": "smart-contract-audit", "name": "Smart Contract Audit", "description": "Audit Solidity smart contracts for vulnerabilities" }
     ],

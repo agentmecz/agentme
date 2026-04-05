@@ -295,6 +295,8 @@ export class DiscoveryClient {
         name: string;
         description: string;
         url: string;
+        skills?: Array<{ id: string; name: string; description?: string }>;
+        /** @deprecated Use skills instead */
         capabilities?: Array<{ id: string; name: string; description?: string }>;
         agoramesh?: {
           did: string;
@@ -329,7 +331,7 @@ export class DiscoveryClient {
             stake: 0,
             endorsement: 0,
           },
-      matchingSkills: (item.card.capabilities ?? []).map((c) => ({
+      matchingSkills: (item.card.skills ?? item.card.capabilities ?? []).map((c) => ({
         id: c.id,
         name: c.name,
         description: c.description,
@@ -406,6 +408,8 @@ export class DiscoveryClient {
       name: string;
       description: string;
       url: string;
+      skills?: Array<{ id: string; name: string; description?: string }>;
+      /** @deprecated Use skills instead */
       capabilities?: Array<{ id: string; name: string; description?: string }>;
       agoramesh?: {
         did: string;
@@ -425,7 +429,7 @@ export class DiscoveryClient {
         stake: 0,
         endorsement: 0,
       },
-      matchingSkills: (card.capabilities ?? []).map((c) => ({
+      matchingSkills: (card.skills ?? card.capabilities ?? []).map((c) => ({
         id: c.id,
         name: c.name,
         description: c.description,

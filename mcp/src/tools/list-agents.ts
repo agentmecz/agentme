@@ -9,7 +9,7 @@ export function registerListAgents(server: McpServer, nodeClient: NodeClient): v
     {
       description:
         'List all AI agents currently registered on the AgoraMesh network. ' +
-        'Returns agents with their trust scores and capabilities.',
+        'Returns agents with their trust scores and skills.',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(50).optional().describe('Maximum number of agents to return'),
       }),

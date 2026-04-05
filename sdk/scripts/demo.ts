@@ -53,7 +53,9 @@ interface AgentCard {
   name: string;
   description: string;
   url: string;
-  capabilities: Capability[];
+  skills: Capability[];
+  /** @deprecated Use skills instead */
+  capabilities?: Capability[];
   'x-agoramesh': AgoraMeshExtension;
 }
 
@@ -207,8 +209,8 @@ async function step2_discoverAgents(): Promise<SemanticResult[]> {
     bullet(`DID: ${DIM}${result.did}${RESET}`);
     bullet(`Match: ${(result.score * 100).toFixed(1)}%  ${DIM}(vector: ${(result.vector_score * 100).toFixed(1)}%, keyword: ${(result.keyword_score * 100).toFixed(1)}%)${RESET}`);
 
-    const caps = card.capabilities.map((c) => c.name).join(', ');
-    bullet(`Capabilities: ${caps}`);
+    const skillNames = (card.skills ?? card.capabilities ?? []).map((c: { name: string }) => c.name).join(', ');
+    bullet(`Skills: ${skillNames}`);
   }
 
   return results;

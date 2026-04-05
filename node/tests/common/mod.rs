@@ -328,7 +328,7 @@ pub fn test_capability_card(did: &str, name: &str) -> String {
             "name": "{}",
             "description": "Test agent for integration testing",
             "url": "https://test.example.com/agents/{}",
-            "capabilities": [
+            "skills": [
                 {{
                     "id": "test-skill",
                     "name": "Test Skill",
