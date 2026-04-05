@@ -28,12 +28,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Gitleaks - detect hardcoded secrets
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: true
-          GITLEAKS_ENABLE_SUMMARY: true
+      - name: TruffleHog - detect hardcoded secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified --results=verified
 
   # ==========================================================================
   # Dependency Audit - check for known vulnerabilities in dependencies
