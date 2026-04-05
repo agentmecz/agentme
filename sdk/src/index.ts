@@ -92,6 +92,10 @@ export type {
   // Discovery
   SearchOptions,
   DiscoveryResult,
+
+  // Task
+  TaskSubmission,
+  TaskOutcome,
 } from './types.js';
 
 export {

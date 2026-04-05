@@ -190,6 +190,93 @@ Ensure your deployer address has enough ETH for gas.
 2. Wait a few blocks after deployment
 3. Try manual verification on Basescan
 
+## TimelockController (Governance)
+
+All admin operations are protected by a 24-hour timelock using OpenZeppelin's
+`TimelockController`. This prevents instant privilege escalation if an admin
+key is compromised — users and agents have 24 hours to react.
+
+### Architecture
+
+```
+Proposer (deployer/multisig)
+    │
+    ▼
+TimelockController (24h delay)
+    │
+    ▼
+All AgoraMesh contracts (DEFAULT_ADMIN_ROLE)
+```
+
+The `TimelockController` holds `DEFAULT_ADMIN_ROLE` on every contract. The
+deployer/multisig has `PROPOSER_ROLE`, `EXECUTOR_ROLE`, and `CANCELLER_ROLE`
+on the timelock itself.
+
+### Deploying the Timelock
+
+Run **after** `DeployAll.s.sol` completes:
+
+```bash
+# Option 1: Read addresses from deployment JSON
+DEPLOYED_ADDRESSES_JSON=../deployments/sepolia.json \
+forge script script/DeployTimelock.s.sol \
+  --rpc-url base_sepolia \
+  --private-key $DEPLOYER_PRIVATE_KEY \
+  --broadcast --verify
+
+# Option 2: Pass addresses explicitly
+forge script script/DeployTimelock.s.sol \
+  --rpc-url base_sepolia --broadcast --verify \
+  --sig "run(address,address,address,address,address,address,address,address,address)" \
+  <trustRegistry> <chainRegistry> <escrow> <disputes> <streaming> \
+  <crossChain> <namespaces> <agentToken> <nftReputation>
+```
+
+The script:
+1. Deploys `TimelockController` with 24h `minDelay`
+2. Grants `DEFAULT_ADMIN_ROLE` to the timelock on all 9 contracts
+3. Revokes `DEFAULT_ADMIN_ROLE` from the deployer on all 9 contracts
+
+### Performing Admin Operations
+
+After timelock is deployed, all admin calls (e.g., `setTreasury`, `addAllowedToken`,
+`grantRole`) must go through the timelock's schedule → wait → execute flow:
+
+```bash
+# 1. Schedule (proposer)
+cast send <TIMELOCK_ADDRESS> \
+  "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" \
+  <TARGET_CONTRACT> 0 <ENCODED_CALL> 0x00 <SALT> 86400 \
+  --rpc-url base_sepolia --private-key $DEPLOYER_PRIVATE_KEY
+
+# 2. Wait 24 hours
+
+# 3. Execute (executor)
+cast send <TIMELOCK_ADDRESS> \
+  "execute(address,uint256,bytes,bytes32,bytes32)" \
+  <TARGET_CONTRACT> 0 <ENCODED_CALL> 0x00 <SALT> \
+  --rpc-url base_sepolia --private-key $DEPLOYER_PRIVATE_KEY
+```
+
+### Emergency Cancellation
+
+The `CANCELLER_ROLE` holder can cancel any pending operation before execution:
+
+```bash
+cast send <TIMELOCK_ADDRESS> \
+  "cancel(bytes32)" <OPERATION_ID> \
+  --rpc-url base_sepolia --private-key $DEPLOYER_PRIVATE_KEY
+```
+
+### Roles
+
+| Role | Holder | Purpose |
+|------|--------|---------|
+| `PROPOSER_ROLE` | Deployer/multisig | Schedule admin operations |
+| `EXECUTOR_ROLE` | Deployer/multisig | Execute after delay |
+| `CANCELLER_ROLE` | Deployer/multisig | Emergency cancel |
+| `DEFAULT_ADMIN_ROLE` | TimelockController (self) | Manage timelock roles |
+
 ## Security Checklist
 
 Before mainnet deployment:
@@ -197,10 +284,12 @@ Before mainnet deployment:
 - [ ] Security audit completed (see `docs/security/audit-preparation.md`)
 - [ ] All tests passing (`forge test`)
 - [ ] Dry-run deployment successful
+- [ ] TimelockController deployed and admin transferred
 - [ ] Admin address is a multisig
 - [ ] Private keys stored securely (never in code)
 - [ ] Rate limits and caps configured appropriately
 - [ ] Emergency pause mechanisms understood
+- [ ] Deployer DEFAULT_ADMIN_ROLE revoked on all contracts
 
 ## Upgradeability
 

@@ -3,7 +3,15 @@
  * Replicates the proven pattern from bridge/src/discovery-proxy.ts.
  */
 
-import { AgoraMeshError, AgoraMeshErrorCode } from '@agoramesh/sdk';
+import {
+  AgoraMeshError,
+  AgoraMeshErrorCode,
+  type SearchOptions,
+  type TaskSubmission,
+  type TaskOutcome,
+} from '@agoramesh/sdk';
+
+export type { SearchOptions, TaskSubmission, TaskOutcome };
 
 const DEFAULT_TIMEOUT = 5000;
 const BRIDGE_TIMEOUT = 65000; // Bridge sync timeout is 60s, give 5s buffer
@@ -19,29 +27,9 @@ export class NodeClientError extends AgoraMeshError {
   }
 }
 
-export interface SearchOptions {
-  limit?: number;
-  minTrust?: number;
-}
-
 export interface NodeClientOptions {
   bridgeUrl?: string;
   bridgeAuth?: string;
-}
-
-export interface TaskInput {
-  agentDid: string;
-  prompt: string;
-  type?: string;
-  timeout?: number;
-}
-
-export interface TaskResult {
-  taskId: string;
-  status: string;
-  output?: string;
-  error?: string;
-  duration?: number;
 }
 
 export class NodeClient {
@@ -93,7 +81,7 @@ export class NodeClient {
     return this.getOrNull(url);
   }
 
-  async submitTask(input: TaskInput): Promise<TaskResult> {
+  async submitTask(input: TaskSubmission): Promise<TaskOutcome> {
     if (!this.bridgeUrl) throw new AgoraMeshError(AgoraMeshErrorCode.BRIDGE_NOT_CONFIGURED, 'Bridge URL not configured');
 
     const url = `${this.bridgeUrl}/task?wait=true`;
@@ -118,10 +106,10 @@ export class NodeClient {
       throw new NodeClientError(response.status, text);
     }
 
-    return response.json() as Promise<TaskResult>;
+    return response.json() as Promise<TaskOutcome>;
   }
 
-  async getTask(taskId: string): Promise<TaskResult> {
+  async getTask(taskId: string): Promise<TaskOutcome> {
     if (!this.bridgeUrl) throw new AgoraMeshError(AgoraMeshErrorCode.BRIDGE_NOT_CONFIGURED, 'Bridge URL not configured');
 
     const url = `${this.bridgeUrl}/task/${taskId}`;
@@ -139,7 +127,7 @@ export class NodeClient {
       throw new NodeClientError(response.status, text);
     }
 
-    return response.json() as Promise<TaskResult>;
+    return response.json() as Promise<TaskOutcome>;
   }
 
   private async get(url: string): Promise<unknown> {

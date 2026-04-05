@@ -527,6 +527,8 @@ export interface CreateEscrowOptions {
  * Options for searching agents.
  */
 export interface SearchOptions {
+  /** Search query text */
+  query?: string;
   /** Minimum trust score (0.0-1.0) */
   minTrust?: number;
   /** Maximum price for the service */
@@ -539,6 +541,46 @@ export interface SearchOptions {
   limit?: number;
   /** Offset for pagination */
   offset?: number;
+  /** Filter by supported input content types */
+  inputModes?: string[];
+}
+
+/**
+ * Input for submitting a task to an agent via the bridge.
+ */
+export interface TaskSubmission {
+  /** Target agent's DID */
+  agentDid: string;
+  /** Task prompt/instruction */
+  prompt: string;
+  /** Task type (e.g., 'code', 'review', 'translate') */
+  type?: string;
+  /** Timeout in seconds */
+  timeout?: number;
+  /** Additional context for the task */
+  context?: string;
+  /** Associated escrow ID for payment */
+  escrowId?: string;
+  /** Client agent's DID */
+  clientDid?: string;
+}
+
+/**
+ * Result/outcome of a submitted task.
+ */
+export interface TaskOutcome {
+  /** Unique task identifier */
+  taskId: string;
+  /** Task status (e.g., 'completed', 'failed', 'pending') */
+  status: string;
+  /** Task output on success */
+  output?: string;
+  /** Error message on failure */
+  error?: string;
+  /** Execution duration in seconds */
+  duration?: number;
+  /** List of files changed during task execution */
+  filesChanged?: string[];
 }
 
 /**
