@@ -15,7 +15,12 @@ import "./interfaces/chainlink/VRFV2PlusClient.sol";
 /// @notice Implements tiered dispute resolution: Auto, AI-Assisted, and Community
 /// @dev Follows spec: Tier 1 (<$10), Tier 2 ($10-$1000), Tier 3 (>$1000)
 ///      Uses Chainlink VRF v2.5 for unbiased arbiter selection
-contract TieredDisputeResolution is IDisputeResolution, AccessControlEnumerable, ReentrancyGuard, VRFConsumerBaseV2Plus {
+contract TieredDisputeResolution is
+    IDisputeResolution,
+    AccessControlEnumerable,
+    ReentrancyGuard,
+    VRFConsumerBaseV2Plus
+{
     using SafeERC20 for IERC20;
 
     // ============ Constants ============

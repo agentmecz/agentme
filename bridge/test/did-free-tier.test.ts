@@ -277,7 +277,7 @@ describe('DID:key free tier — A2A JSON-RPC (POST /)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.result).toBeDefined();
-    expect(res.body.result.status.state).toBe('completed');
+    expect(res.body.result.status.state).toBe('TASK_STATE_COMPLETED');
   });
 
   it('rejects A2A request with invalid DID auth', async () => {

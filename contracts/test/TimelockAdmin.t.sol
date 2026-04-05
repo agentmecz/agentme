@@ -132,9 +132,7 @@ contract TimelockAdminTest is Test {
 
         address target = address(trustRegistry);
         uint256 value = 0;
-        bytes memory data = abi.encodeCall(
-            IAccessControl.grantRole, (oracleRole, newOracle)
-        );
+        bytes memory data = abi.encodeCall(IAccessControl.grantRole, (oracleRole, newOracle));
         bytes32 predecessor = bytes32(0);
         bytes32 salt = keccak256("grantOracle-1");
 
@@ -202,7 +200,7 @@ contract TimelockAdminTest is Test {
         timelock.executeBatch(targets, values, payloads, predecessor, salt);
 
         assertEq(escrow.treasury(), newTreasury);
-        (,string memory name,,) = chainRegistry.getChain(84532);
+        (, string memory name,,) = chainRegistry.getChain(84532);
         assertEq(name, "Base Sepolia");
     }
 

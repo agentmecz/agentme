@@ -308,7 +308,7 @@ describe('FreeTier auth — A2A JSON-RPC (POST /)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.result).toBeDefined();
-    expect(res.body.result.status.state).toBe('completed');
+    expect(res.body.result.status.state).toBe('TASK_STATE_COMPLETED');
   });
 });
 

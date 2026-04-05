@@ -32,7 +32,13 @@ contract VRFCoordinatorV2_5Mock is IVRFCoordinatorV2Plus {
         emit SubscriptionCreated(subId);
     }
 
-    function fundSubscription(uint256 subId, uint96 /* amount */ ) external view {
+    function fundSubscription(
+        uint256 subId,
+        uint96 /* amount */
+    )
+        external
+        view
+    {
         require(subscriptions[subId], "sub not found");
     }
 

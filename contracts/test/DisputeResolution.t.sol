@@ -1315,13 +1315,19 @@ contract DisputeResolutionTest is Test {
 
         // After submitAIAnalysis, state is AI_ANALYSIS (awaiting VRF callback)
         IDisputeResolution.Dispute memory d1 = disputeResolution.getDispute(disputeId);
-        assertEq(uint256(d1.state), uint256(IDisputeResolution.DisputeState.AI_ANALYSIS), "Should be in AI_ANALYSIS awaiting VRF");
+        assertEq(
+            uint256(d1.state),
+            uint256(IDisputeResolution.DisputeState.AI_ANALYSIS),
+            "Should be in AI_ANALYSIS awaiting VRF"
+        );
 
         // VRF callback selects arbiters and transitions to VOTING
         _fulfillVRF();
 
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        assertEq(uint256(d.state), uint256(IDisputeResolution.DisputeState.VOTING), "Should transition to VOTING after VRF");
+        assertEq(
+            uint256(d.state), uint256(IDisputeResolution.DisputeState.VOTING), "Should transition to VOTING after VRF"
+        );
         assertGt(d.votingDeadline, 0, "Voting deadline should be set");
     }
 
@@ -2047,25 +2053,39 @@ contract DisputeResolutionTest is Test {
     function test_constructor_revertsIfZeroEscrow() public {
         vm.prank(admin);
         vm.expectRevert(TieredDisputeResolution.InvalidEscrow.selector);
-        new TieredDisputeResolution(address(0), address(trustRegistry), address(usdc), admin, address(vrfCoordinator), vrfSubId, VRF_KEY_HASH);
+        new TieredDisputeResolution(
+            address(0), address(trustRegistry), address(usdc), admin, address(vrfCoordinator), vrfSubId, VRF_KEY_HASH
+        );
     }
 
     function test_constructor_revertsIfZeroTrustRegistry() public {
         vm.prank(admin);
         vm.expectRevert(TieredDisputeResolution.InvalidTrustRegistry.selector);
-        new TieredDisputeResolution(address(escrow), address(0), address(usdc), admin, address(vrfCoordinator), vrfSubId, VRF_KEY_HASH);
+        new TieredDisputeResolution(
+            address(escrow), address(0), address(usdc), admin, address(vrfCoordinator), vrfSubId, VRF_KEY_HASH
+        );
     }
 
     function test_constructor_revertsIfZeroPaymentToken() public {
         vm.prank(admin);
         vm.expectRevert(TieredDisputeResolution.InvalidPaymentToken.selector);
-        new TieredDisputeResolution(address(escrow), address(trustRegistry), address(0), admin, address(vrfCoordinator), vrfSubId, VRF_KEY_HASH);
+        new TieredDisputeResolution(
+            address(escrow), address(trustRegistry), address(0), admin, address(vrfCoordinator), vrfSubId, VRF_KEY_HASH
+        );
     }
 
     function test_constructor_revertsIfZeroAdmin() public {
         vm.prank(admin);
         vm.expectRevert(TieredDisputeResolution.InvalidAdmin.selector);
-        new TieredDisputeResolution(address(escrow), address(trustRegistry), address(usdc), address(0), address(vrfCoordinator), vrfSubId, VRF_KEY_HASH);
+        new TieredDisputeResolution(
+            address(escrow),
+            address(trustRegistry),
+            address(usdc),
+            address(0),
+            address(vrfCoordinator),
+            vrfSubId,
+            VRF_KEY_HASH
+        );
     }
 
     function test_getDispute_revertsForNonExistentInternally() public {

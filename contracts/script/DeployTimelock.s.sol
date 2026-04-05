@@ -105,12 +105,7 @@ contract DeployTimelock is Script {
         executors[0] = deployer;
 
         // admin = deployer (for initial setup; can be renounced later)
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            deployer
-        );
+        TimelockController timelock = new TimelockController(MIN_DELAY, proposers, executors, deployer);
         console.log("  TimelockController:", address(timelock));
 
         // Grant CANCELLER_ROLE to deployer for emergency cancellation.

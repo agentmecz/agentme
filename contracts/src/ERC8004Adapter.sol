@@ -16,7 +16,13 @@ import "./AgentToken.sol";
 /// @dev Extends the original read-only adapter with write capabilities. When an external
 ///      ERC-8004 IdentityRegistry is configured, registration calls are forwarded to it.
 ///      Feedback from ERC-8004 ecosystem is relayed to TrustRegistry via the ORACLE_ROLE.
-contract ERC8004Adapter is IERC8004IdentityRegistry, IERC8004ReputationRegistry, IERC8004ValidationRegistry, AccessControlEnumerable, ReentrancyGuard {
+contract ERC8004Adapter is
+    IERC8004IdentityRegistry,
+    IERC8004ReputationRegistry,
+    IERC8004ValidationRegistry,
+    AccessControlEnumerable,
+    ReentrancyGuard
+{
     // ============ Roles ============
 
     /// @notice Role for relaying ERC-8004 feedback to TrustRegistry
@@ -495,12 +501,7 @@ contract ERC8004Adapter is IERC8004IdentityRegistry, IERC8004ReputationRegistry,
     // ============ ERC-165 Support ============
 
     /// @notice Check interface support
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(AccessControlEnumerable)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(AccessControlEnumerable) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 

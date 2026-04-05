@@ -427,7 +427,7 @@ describe('Task polling & sync mode', () => {
 
       expect(res.body.result).toBeDefined();
       expect(res.body.result.id).toBe(taskId);
-      expect(res.body.result.status.state).toBe('completed');
+      expect(res.body.result.status.state).toBe('TASK_STATE_COMPLETED');
       expect(res.body.result.artifacts).toBeDefined();
       expect(res.body.result.artifacts[0].parts[0].text).toBe('A2A result');
     });

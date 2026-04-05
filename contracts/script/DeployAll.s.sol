@@ -109,12 +109,17 @@ contract DeployAll is Script {
         console.log("  3. AgoraMeshEscrow:", c.escrow);
 
         // 4. TieredDisputeResolution (dispute handling)
-        c.disputes = address(new TieredDisputeResolution(
-            c.escrow, c.trustRegistry, usdc, admin,
-            vm.envAddress("VRF_COORDINATOR"),
-            vm.envUint("VRF_SUBSCRIPTION_ID"),
-            vm.envBytes32("VRF_KEY_HASH")
-        ));
+        c.disputes = address(
+            new TieredDisputeResolution(
+                c.escrow,
+                c.trustRegistry,
+                usdc,
+                admin,
+                vm.envAddress("VRF_COORDINATOR"),
+                vm.envUint("VRF_SUBSCRIPTION_ID"),
+                vm.envBytes32("VRF_KEY_HASH")
+            )
+        );
         console.log("  4. TieredDisputeResolution:", c.disputes);
 
         // 5. StreamingPayments (continuous payments)

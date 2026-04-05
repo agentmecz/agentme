@@ -10,22 +10,26 @@ import { IPFSService } from '../src/ipfs.js';
 import type { AgentConfig } from '../src/types.js';
 
 // Mock the SDK
-vi.mock('@agoramesh/sdk', () => ({
-  AgoraMeshClient: vi.fn().mockImplementation(function () {
-    this.connect = vi.fn().mockResolvedValue(undefined);
-    this.disconnect = vi.fn();
-    this.isConnected = vi.fn().mockReturnValue(true);
-    this.registerAgent = vi.fn().mockResolvedValue('0x1234567890abcdef');
-    this.getAgent = vi.fn().mockResolvedValue(null);
-    this.isAgentActive = vi.fn().mockResolvedValue(false);
-    this.getAddress = vi.fn().mockReturnValue('0xAgentAddress');
-  }),
-  DiscoveryClient: vi.fn().mockImplementation(function () {
-    this.setNodeUrl = vi.fn();
-    this.announce = vi.fn().mockResolvedValue(undefined);
-    this.unannounce = vi.fn().mockResolvedValue(undefined);
-  }),
-}));
+vi.mock('@agoramesh/sdk', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    AgoraMeshClient: vi.fn().mockImplementation(function () {
+      this.connect = vi.fn().mockResolvedValue(undefined);
+      this.disconnect = vi.fn();
+      this.isConnected = vi.fn().mockReturnValue(true);
+      this.registerAgent = vi.fn().mockResolvedValue('0x1234567890abcdef');
+      this.getAgent = vi.fn().mockResolvedValue(null);
+      this.isAgentActive = vi.fn().mockResolvedValue(false);
+      this.getAddress = vi.fn().mockReturnValue('0xAgentAddress');
+    }),
+    DiscoveryClient: vi.fn().mockImplementation(function () {
+      this.setNodeUrl = vi.fn();
+      this.announce = vi.fn().mockResolvedValue(undefined);
+      this.unannounce = vi.fn().mockResolvedValue(undefined);
+    }),
+  };
+});
 
 // Mock IPFS service for registration tests
 const createMockIPFSService = (configured = true): IPFSService => {

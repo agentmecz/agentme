@@ -234,7 +234,10 @@ contract StreamingPayments is IStreamingPayments, AccessControlEnumerable, Reent
         stream.withdrawnAmount += amount;
 
         // Check if stream is completed (use dust threshold to handle rounding)
-        if (stream.depositAmount - stream.withdrawnAmount <= DUST_THRESHOLD && block.timestamp >= _adjustedEndTime(streamId)) {
+        if (
+            stream.depositAmount - stream.withdrawnAmount <= DUST_THRESHOLD
+                && block.timestamp >= _adjustedEndTime(streamId)
+        ) {
             stream.status = StreamStatus.COMPLETED;
             emit StreamCompleted(streamId);
         }
@@ -255,7 +258,10 @@ contract StreamingPayments is IStreamingPayments, AccessControlEnumerable, Reent
         stream.withdrawnAmount += withdrawn;
 
         // Check if stream is completed (use dust threshold to handle rounding)
-        if (stream.depositAmount - stream.withdrawnAmount <= DUST_THRESHOLD && block.timestamp >= _adjustedEndTime(streamId)) {
+        if (
+            stream.depositAmount - stream.withdrawnAmount <= DUST_THRESHOLD
+                && block.timestamp >= _adjustedEndTime(streamId)
+        ) {
             stream.status = StreamStatus.COMPLETED;
             emit StreamCompleted(streamId);
         }
