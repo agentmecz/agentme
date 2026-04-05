@@ -4,6 +4,7 @@
  * Usage: AGORAMESH_NODE_URL=https://api.agoramesh.ai npx tsx mcp/src/cli.ts
  */
 
+import { readFileSync } from 'node:fs';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './index.js';
 import { validateMcpConfig } from './validate-config.js';
@@ -20,8 +21,9 @@ if (configErrors.length > 0) {
 
 const nodeUrl = process.env.AGORAMESH_NODE_URL || 'http://localhost:8080';
 const bridgeUrl = process.env.AGORAMESH_BRIDGE_URL || undefined;
+const tlsCa = process.env.TLS_CA ? readFileSync(process.env.TLS_CA) : undefined;
 
-const server = createServer({ nodeUrl, bridgeUrl });
+const server = createServer({ nodeUrl, bridgeUrl, tlsCa });
 const transport = new StdioServerTransport();
 
 await server.connect(transport);

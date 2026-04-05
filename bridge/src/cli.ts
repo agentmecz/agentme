@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 import { readFileSync, existsSync } from 'node:fs';
-import { BridgeServer, BridgeServerConfig } from './server.js';
+import { BridgeServer, BridgeServerConfig, TlsConfig } from './server.js';
 import { AgentConfig } from './types.js';
 import { EscrowClient, didToHash } from './escrow.js';
 import { loadAgentCardConfig } from './config.js';
@@ -94,12 +94,26 @@ async function main() {
     ? (/^\d+$/.test(trustProxyEnv) ? parseInt(trustProxyEnv, 10) : trustProxyEnv === 'true' ? true : trustProxyEnv === 'false' ? false : trustProxyEnv)
     : undefined;
 
+  // TLS configuration for HTTPS + mTLS (optional, falls back to HTTP)
+  let tls: TlsConfig | undefined;
+  const tlsCertPath = process.env.TLS_CERT;
+  const tlsKeyPath = process.env.TLS_KEY;
+  if (tlsCertPath && tlsKeyPath) {
+    tls = {
+      cert: readFileSync(tlsCertPath),
+      key: readFileSync(tlsKeyPath),
+      ...(process.env.TLS_CA && { ca: readFileSync(process.env.TLS_CA) }),
+    };
+    console.log(`[Bridge] TLS enabled (cert: ${tlsCertPath}, ca: ${process.env.TLS_CA ?? 'none'})`);
+  }
+
   const serverConfig: BridgeServerConfig = {
     ...config,
     host,
     requireAuth,
     apiToken,
     trustProxy,
+    tls,
     nodeUrl: process.env.AGORAMESH_NODE_URL,
     cors: corsOrigins
       ? { origins: corsOrigins.split(',').map((s) => s.trim()) }
@@ -174,9 +188,11 @@ async function main() {
 
   await server.start(port);
 
+  const proto = tls ? 'https' : 'http';
+  const wsProto = tls ? 'wss' : 'ws';
   console.log('\n📡 Ready to receive tasks!');
-  console.log(`   REST API: http://localhost:${port}/task`);
-  console.log(`   WebSocket: ws://localhost:${port}`);
+  console.log(`   REST API: ${proto}://localhost:${port}/task`);
+  console.log(`   WebSocket: ${wsProto}://localhost:${port}`);
   console.log(`   Agent Card: http://localhost:${port}/.well-known/agent.json`);
   console.log('\nPress Ctrl+C to stop\n');
 }

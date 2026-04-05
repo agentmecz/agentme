@@ -15,10 +15,12 @@ import { registerCheckTask } from './tools/check-task.js';
 export interface CreateServerOptions {
   nodeUrl: string;
   bridgeUrl?: string;
+  /** PEM-encoded CA certificate for verifying internal service TLS certs */
+  tlsCa?: Buffer;
 }
 
 export function createServer(options: CreateServerOptions): McpServer {
-  const client = new NodeClient(options.nodeUrl, { bridgeUrl: options.bridgeUrl });
+  const client = new NodeClient(options.nodeUrl, { bridgeUrl: options.bridgeUrl, tlsCa: options.tlsCa });
 
   const server = new McpServer({
     name: 'agoramesh',

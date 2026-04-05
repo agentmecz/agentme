@@ -20,8 +20,14 @@ services:
       - "127.0.0.1:4001:4001"
     volumes:
       - agoramesh_data:/app/data
+      - ./certs/node.pem:/certs/node.pem:ro
+      - ./certs/node-key.pem:/certs/node-key.pem:ro
+      - ./certs/ca.pem:/certs/ca.pem:ro
     environment:
       - RUST_LOG=info
+      - TLS_CERT=/certs/node.pem
+      - TLS_KEY=/certs/node-key.pem
+      - TLS_CA=/certs/ca.pem
       - AGORAMESH_TRUST_PROXY=true
       - AGORAMESH_API_TOKEN=${AGORAMESH_API_TOKEN}
       - AGORAMESH_CORS_ORIGINS=${AGORAMESH_CORS_ORIGINS:-}
@@ -49,14 +55,22 @@ services:
       - /tmp:noexec,nosuid,size=100m
     ports:
       - "127.0.0.1:3402:3402"
+    volumes:
+      - ./certs/bridge.pem:/certs/bridge.pem:ro
+      - ./certs/bridge-key.pem:/certs/bridge-key.pem:ro
+      - ./certs/ca.pem:/certs/ca.pem:ro
     environment:
       - BRIDGE_HOST=0.0.0.0
       - NODE_ENV=production
       - BRIDGE_REQUIRE_AUTH=true
       - BRIDGE_API_TOKEN=${BRIDGE_API_TOKEN}
       - BRIDGE_CORS_ORIGINS=${BRIDGE_CORS_ORIGINS:-}
-      - API_ENDPOINT=http://node:8080
-      - AGORAMESH_NODE_URL=http://node:8080
+      - API_ENDPOINT=https://node:8080
+      - AGORAMESH_NODE_URL=https://node:8080
+      - TLS_CERT=/certs/bridge.pem
+      - TLS_KEY=/certs/bridge-key.pem
+      - TLS_CA=/certs/ca.pem
+      - NODE_EXTRA_CA_CERTS=/certs/ca.pem
       # AGENT_PRIVATE_KEY is loaded from Docker secret (see secrets section below).
       # Env-var fallback kept for non-Docker environments:
       - AGENT_PRIVATE_KEY=${BRIDGE_AGENT_PRIVATE_KEY:-}
@@ -84,11 +98,19 @@ services:
     command: ["node", "dist/http.js"]
     ports:
       - "127.0.0.1:3403:3403"
+    volumes:
+      - ./certs/mcp.pem:/certs/mcp.pem:ro
+      - ./certs/mcp-key.pem:/certs/mcp-key.pem:ro
+      - ./certs/ca.pem:/certs/ca.pem:ro
     environment:
-      - AGORAMESH_NODE_URL=http://node:8080
-      - AGORAMESH_BRIDGE_URL=http://bridge:3402
+      - AGORAMESH_NODE_URL=https://node:8080
+      - AGORAMESH_BRIDGE_URL=https://bridge:3402
       - AGORAMESH_MCP_PORT=3403
       - AGORAMESH_PUBLIC_URL=https://api.agoramesh.ai
+      - TLS_CERT=/certs/mcp.pem
+      - TLS_KEY=/certs/mcp-key.pem
+      - TLS_CA=/certs/ca.pem
+      - NODE_EXTRA_CA_CERTS=/certs/ca.pem
     restart: unless-stopped
     mem_limit: 256m
     depends_on:

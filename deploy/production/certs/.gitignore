@@ -1,0 +1,5 @@
+# Generated certificates — never commit private keys
+*.pem
+*.csr
+*.srl
+*.cnf

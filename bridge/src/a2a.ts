@@ -80,6 +80,8 @@ export const A2A_ERRORS = {
   TASK_NOT_CANCELLABLE: { code: -32002, message: 'Task not cancellable' },
   INCOMPATIBLE_VERSION: { code: -32003, message: 'Incompatible A2A-Version' },
   INVALID_STATE_TRANSITION: { code: -32004, message: 'Invalid state transition' },
+  PUSH_NOTIFICATION_NOT_SUPPORTED: { code: -32005, message: 'Push notifications not supported' },
+  PUSH_NOTIFICATION_CONFIG_NOT_FOUND: { code: -32006, message: 'Push notification config not found' },
 } as const;
 
 // =============================================================================
@@ -239,6 +241,74 @@ export interface TaskArtifactUpdateEvent {
 }
 
 export type StreamResponseEvent = TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
+
+// =============================================================================
+// Push Notification types (A2A v1.0.0)
+// =============================================================================
+
+export interface TaskPushNotificationConfig {
+  id: string;
+  taskId: string;
+  pushNotificationConfig: {
+    url: string;
+    /** Optional token included in Authorization header of webhook calls */
+    token?: string;
+    /** Optional authentication config for webhook */
+    authentication?: {
+      schemes: string[];
+      credentials?: string;
+    };
+  };
+}
+
+// =============================================================================
+// Push Notification in-memory store
+// =============================================================================
+
+/** In-memory store: taskId -> push notification configs */
+const pushNotificationStore: Map<string, TaskPushNotificationConfig[]> = new Map();
+
+export function setPushNotificationConfig(config: TaskPushNotificationConfig): void {
+  const existing = pushNotificationStore.get(config.taskId) ?? [];
+  const idx = existing.findIndex((c) => c.id === config.id);
+  if (idx >= 0) {
+    existing[idx] = config;
+  } else {
+    existing.push(config);
+  }
+  pushNotificationStore.set(config.taskId, existing);
+}
+
+export function getPushNotificationConfig(taskId: string, configId: string): TaskPushNotificationConfig | undefined {
+  const configs = pushNotificationStore.get(taskId);
+  return configs?.find((c) => c.id === configId);
+}
+
+export function listPushNotificationConfigs(taskId: string): TaskPushNotificationConfig[] {
+  return pushNotificationStore.get(taskId) ?? [];
+}
+
+export function deletePushNotificationConfig(taskId: string, configId: string): boolean {
+  const configs = pushNotificationStore.get(taskId);
+  if (!configs) return false;
+  const idx = configs.findIndex((c) => c.id === configId);
+  if (idx < 0) return false;
+  configs.splice(idx, 1);
+  if (configs.length === 0) {
+    pushNotificationStore.delete(taskId);
+  }
+  return true;
+}
+
+/** Get all configs for a task (used by the notification dispatcher) */
+export function getConfigsForTask(taskId: string): TaskPushNotificationConfig[] {
+  return pushNotificationStore.get(taskId) ?? [];
+}
+
+/** Clean up push notification configs for a task (called after notifications are sent) */
+export function cleanupPushNotificationConfigs(taskId: string): void {
+  pushNotificationStore.delete(taskId);
+}
 
 // =============================================================================
 // Context ID management for multi-turn conversations
@@ -923,6 +993,94 @@ async function handleSubscribeToTask(
 }
 
 // =============================================================================
+// Push Notification CRUD handlers (JSON-RPC)
+// =============================================================================
+
+function handleCreatePushNotificationConfig(
+  params: Record<string, unknown> | undefined,
+  id: string | number
+): JsonRpcResponse {
+  if (!params || typeof params.id !== 'string') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.id (taskId)');
+  }
+  if (!params.pushNotificationConfig || typeof params.pushNotificationConfig !== 'object') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.pushNotificationConfig');
+  }
+  const pnConfig = params.pushNotificationConfig as Record<string, unknown>;
+  if (typeof pnConfig.url !== 'string' || !pnConfig.url.startsWith('http')) {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'pushNotificationConfig.url must be a valid HTTP(S) URL');
+  }
+
+  const configId = `pnc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const pn: TaskPushNotificationConfig['pushNotificationConfig'] = {
+    url: pnConfig.url,
+  };
+  if (typeof pnConfig.token === 'string') {
+    pn.token = pnConfig.token;
+  }
+  if (pnConfig.authentication && typeof pnConfig.authentication === 'object') {
+    pn.authentication = pnConfig.authentication as TaskPushNotificationConfig['pushNotificationConfig']['authentication'];
+  }
+
+  const config: TaskPushNotificationConfig = {
+    id: configId,
+    taskId: params.id,
+    pushNotificationConfig: pn,
+  };
+
+  setPushNotificationConfig(config);
+  return jsonRpcSuccess(id, config);
+}
+
+function handleGetPushNotificationConfig(
+  params: Record<string, unknown> | undefined,
+  id: string | number
+): JsonRpcResponse {
+  if (!params || typeof params.id !== 'string') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.id (taskId)');
+  }
+  if (typeof params.configId !== 'string') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.configId');
+  }
+
+  const config = getPushNotificationConfig(params.id, params.configId);
+  if (!config) {
+    return jsonRpcError(id, A2A_ERRORS.PUSH_NOTIFICATION_CONFIG_NOT_FOUND);
+  }
+  return jsonRpcSuccess(id, config);
+}
+
+function handleListPushNotificationConfigs(
+  params: Record<string, unknown> | undefined,
+  id: string | number
+): JsonRpcResponse {
+  if (!params || typeof params.id !== 'string') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.id (taskId)');
+  }
+
+  const configs = listPushNotificationConfigs(params.id);
+  return jsonRpcSuccess(id, configs);
+}
+
+function handleDeletePushNotificationConfig(
+  params: Record<string, unknown> | undefined,
+  id: string | number
+): JsonRpcResponse {
+  if (!params || typeof params.id !== 'string') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.id (taskId)');
+  }
+  if (typeof params.configId !== 'string') {
+    return jsonRpcError(id, A2A_ERRORS.INVALID_PARAMS, 'Missing params.configId');
+  }
+
+  const deleted = deletePushNotificationConfig(params.id, params.configId);
+  if (!deleted) {
+    return jsonRpcError(id, A2A_ERRORS.PUSH_NOTIFICATION_CONFIG_NOT_FOUND);
+  }
+  return jsonRpcSuccess(id, { success: true });
+}
+
+// =============================================================================
 // Main handler
 // =============================================================================
 
@@ -989,6 +1147,19 @@ export async function handleA2ARequest(
 
     case 'agent/status':
       return jsonRpcSuccess(id, bridge.getStatus());
+
+    // Push Notification CRUD (A2A v1.0.0)
+    case 'CreatePushNotificationConfig':
+      return handleCreatePushNotificationConfig(params, id);
+
+    case 'GetPushNotificationConfig':
+      return handleGetPushNotificationConfig(params, id);
+
+    case 'ListPushNotificationConfigs':
+      return handleListPushNotificationConfigs(params, id);
+
+    case 'DeletePushNotificationConfig':
+      return handleDeletePushNotificationConfig(params, id);
 
     default:
       return jsonRpcError(id, A2A_ERRORS.METHOD_NOT_FOUND, `Unknown method: ${req.method}`);

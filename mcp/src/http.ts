@@ -4,7 +4,9 @@
  * Usage: AGORAMESH_NODE_URL=https://api.agoramesh.ai node dist/http.js
  */
 
+import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { createMcpRequestHandler } from './http-handler.js';
 
 const port = parseInt(process.env.AGORAMESH_MCP_PORT || '3401');
@@ -15,11 +17,28 @@ const authToken = process.env.AGORAMESH_MCP_AUTH_TOKEN || undefined;
 const corsOrigin = process.env.AGORAMESH_CORS_ORIGIN || undefined;
 const allowedOrigins = process.env.MCP_ALLOWED_ORIGINS || undefined;
 
-const handler = createMcpRequestHandler({ nodeUrl, bridgeUrl, publicUrl, authToken, corsOrigin, allowedOrigins });
-const httpServer = createHttpServer(handler);
+// TLS configuration for HTTPS + mTLS (optional, falls back to HTTP)
+const tlsCertPath = process.env.TLS_CERT;
+const tlsKeyPath = process.env.TLS_KEY;
+const tlsCaPath = process.env.TLS_CA;
+const tlsCa = tlsCaPath ? readFileSync(tlsCaPath) : undefined;
 
+const handler = createMcpRequestHandler({ nodeUrl, bridgeUrl, publicUrl, authToken, corsOrigin, allowedOrigins, tlsCa });
+
+const httpServer = (tlsCertPath && tlsKeyPath)
+  ? createHttpsServer(
+    {
+      cert: readFileSync(tlsCertPath),
+      key: readFileSync(tlsKeyPath),
+      ...(tlsCa && { ca: tlsCa, requestCert: true, rejectUnauthorized: true }),
+    },
+    handler,
+  )
+  : createHttpServer(handler);
+
+const protocol = (tlsCertPath && tlsKeyPath) ? 'https' : 'http';
 httpServer.listen(port, () => {
-  console.error(`AgoraMesh MCP HTTP server running on port ${port} (node: ${nodeUrl}${bridgeUrl ? `, bridge: ${bridgeUrl}` : ''})`);
+  console.error(`AgoraMesh MCP ${protocol.toUpperCase()} server running on port ${port} (node: ${nodeUrl}${bridgeUrl ? `, bridge: ${bridgeUrl}` : ''})`);
 });
 
 // Graceful shutdown

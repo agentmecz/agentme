@@ -1,8 +1,10 @@
 /**
  * HTTP client for the AgoraMesh P2P node.
  * Replicates the proven pattern from bridge/src/discovery-proxy.ts.
+ * Supports custom CA certificates for mTLS inter-service communication.
  */
 
+import { createRequire } from 'node:module';
 import {
   AgoraMeshError,
   AgoraMeshErrorCode,
@@ -30,15 +32,32 @@ export class NodeClientError extends AgoraMeshError {
 export interface NodeClientOptions {
   bridgeUrl?: string;
   bridgeAuth?: string;
+  /** PEM-encoded CA certificate for verifying service TLS certs (mTLS) */
+  tlsCa?: Buffer;
 }
 
 export class NodeClient {
   private bridgeUrl?: string;
   private bridgeAuth: string;
+  private extraFetchOptions: Record<string, unknown>;
 
   constructor(private nodeUrl: string, options?: NodeClientOptions) {
     this.bridgeUrl = options?.bridgeUrl;
     this.bridgeAuth = options?.bridgeAuth ?? 'FreeTier mcp-server';
+    this.extraFetchOptions = {};
+
+    if (options?.tlsCa) {
+      // Create an undici Agent with custom CA for verifying internal service certs.
+      // undici is built into Node.js 20+ and powers global fetch().
+      // NODE_EXTRA_CA_CERTS is also set in Docker as a process-level fallback.
+      try {
+        const require = createRequire(import.meta.url);
+        const undici = require('undici') as { Agent: new (opts: { connect: { ca: Buffer } }) => unknown };
+        this.extraFetchOptions = { dispatcher: new undici.Agent({ connect: { ca: options.tlsCa } }) };
+      } catch {
+        // undici not resolvable — rely on NODE_EXTRA_CA_CERTS env var
+      }
+    }
   }
 
   async searchAgents(query?: string, options?: SearchOptions): Promise<unknown[]> {
@@ -85,7 +104,7 @@ export class NodeClient {
     if (!this.bridgeUrl) throw new AgoraMeshError(AgoraMeshErrorCode.BRIDGE_NOT_CONFIGURED, 'Bridge URL not configured');
 
     const url = `${this.bridgeUrl}/task?wait=true`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,7 +132,7 @@ export class NodeClient {
     if (!this.bridgeUrl) throw new AgoraMeshError(AgoraMeshErrorCode.BRIDGE_NOT_CONFIGURED, 'Bridge URL not configured');
 
     const url = `${this.bridgeUrl}/task/${taskId}`;
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -130,8 +149,13 @@ export class NodeClient {
     return response.json() as Promise<TaskOutcome>;
   }
 
+  /** Wrapper around fetch() that injects the TLS dispatcher when configured. */
+  private doFetch(url: string, init: RequestInit): Promise<Response> {
+    return fetch(url, { ...init, ...this.extraFetchOptions } as RequestInit);
+  }
+
   private async get(url: string): Promise<unknown> {
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT),
@@ -146,7 +170,7 @@ export class NodeClient {
   }
 
   private async getOrNull(url: string): Promise<unknown | null> {
-    const response = await fetch(url, {
+    const response = await this.doFetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT),

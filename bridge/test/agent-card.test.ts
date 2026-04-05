@@ -281,7 +281,7 @@ describe('Agent Card endpoint (rich config)', () => {
 
     expect(res.body.capabilities).toEqual({
       streaming: true,
-      pushNotifications: false,
+      pushNotifications: true,
       x402Payments: true,
       escrow: true,
       extensions: [

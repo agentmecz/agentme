@@ -3,7 +3,8 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createServer, Server, IncomingMessage } from 'http';
+import { createServer as createHttpServer, Server, IncomingMessage } from 'http';
+import { createServer as createHttpsServer } from 'https';
 import type { AddressInfo } from 'net';
 import { timingSafeEqual, randomBytes, createHmac } from 'crypto';
 import { ZodError } from 'zod';
@@ -11,7 +12,7 @@ import { ClaudeExecutor } from './executor.js';
 import { ResolvedTaskInput, TaskInputSchema, TaskResult, RichAgentConfig, SandboxInputSchema, MAX_SANDBOX_OUTPUT_LENGTH, SANDBOX_REQUESTS_PER_HOUR, DIDIdentity, FREETIER_ID_PATTERN, TASK_RESULT_TTL, TASK_SYNC_TIMEOUT } from './types.js';
 import { EscrowClient } from './escrow.js';
 import { createX402Middleware, type X402Config } from './middleware/x402.js';
-import { handleA2ARequest, isStreamingMethod, parseA2ARequestEnvelope, handleA2AStreamingRequest, taskResultToA2ATask, validatePart, buildPromptFromParts, partsToAttachments, toWireState, type A2ABridge, type StreamResponseEvent, type JsonRpcResponse, type A2APart, type A2ATask, type TextPart } from './a2a.js';
+import { handleA2ARequest, isStreamingMethod, parseA2ARequestEnvelope, handleA2AStreamingRequest, taskResultToA2ATask, validatePart, buildPromptFromParts, partsToAttachments, toWireState, getConfigsForTask, cleanupPushNotificationConfigs, setPushNotificationConfig, getPushNotificationConfig, listPushNotificationConfigs, deletePushNotificationConfig, type TaskPushNotificationConfig, type A2ABridge, type StreamResponseEvent, type JsonRpcResponse, type A2APart, type A2ATask, type TextPart } from './a2a.js';
 import { isDIDAuthHeader, parseDIDAuthHeader, verifyDIDSignature } from './did-auth.js';
 import { FreeTierLimiter } from './free-tier-limiter.js';
 import { TrustStore } from './trust-store.js';
@@ -171,6 +172,19 @@ export interface CorsConfig {
 }
 
 /**
+ * TLS configuration for serving HTTPS and mutual TLS.
+ * When provided, the server listens on HTTPS instead of HTTP.
+ */
+export interface TlsConfig {
+  /** PEM-encoded server certificate */
+  cert: Buffer;
+  /** PEM-encoded server private key */
+  key: Buffer;
+  /** PEM-encoded CA certificate for verifying client certs (enables mTLS) */
+  ca?: Buffer;
+}
+
+/**
  * Extended configuration for BridgeServer with optional escrow support
  */
 export interface BridgeServerConfig extends RichAgentConfig {
@@ -203,6 +217,8 @@ export interface BridgeServerConfig extends RichAgentConfig {
   /** Trust proxy setting for Express (default: 1 in production, false otherwise).
    *  Set via TRUST_PROXY env var. Accepts number, boolean string, or comma-separated IPs. */
   trustProxy?: string | number | boolean;
+  /** TLS configuration. When set, server listens on HTTPS with optional mTLS. */
+  tls?: TlsConfig;
 }
 
 /**
@@ -281,7 +297,22 @@ export class BridgeServer {
     // Setup rate limiting
     this.setupRateLimiting();
 
-    this.server = createServer(this.app);
+    if (config.tls) {
+      this.server = createHttpsServer(
+        {
+          cert: config.tls.cert,
+          key: config.tls.key,
+          ...(config.tls.ca && {
+            ca: config.tls.ca,
+            requestCert: true,
+            rejectUnauthorized: true,
+          }),
+        },
+        this.app,
+      );
+    } else {
+      this.server = createHttpServer(this.app);
+    }
 
     // Setup WebSocket server with authentication and origin validation
     this.wss = new WebSocketServer({
@@ -882,6 +913,9 @@ export class BridgeServer {
 
           // Broadcast result via WebSocket or webhook
           this.broadcastResult(result);
+
+          // Dispatch push notifications to registered webhooks
+          this.dispatchPushNotifications(task.taskId, result);
         }).catch((error) => {
           console.error(`[Bridge] Unhandled error in task ${task.taskId}:`, error);
           this.pendingTasks.delete(task.taskId);
@@ -1339,6 +1373,66 @@ export class BridgeServer {
         }
       });
     });
+
+    // =========================================================================
+    // Push Notification Config REST endpoints (A2A v1.0.0)
+    // =========================================================================
+
+    // POST /tasks/:id/pushNotificationConfigs — create config
+    this.app.post('/tasks/:taskId/pushNotificationConfigs', taskAuthMiddleware, (req: Request, res: Response) => {
+      const { taskId } = req.params;
+      const body = req.body as Record<string, unknown>;
+      if (!body.pushNotificationConfig || typeof body.pushNotificationConfig !== 'object') {
+        return res.status(400).json(buildRichError('Missing pushNotificationConfig', ErrorCode.INVALID_INPUT));
+      }
+      const pnConfig = body.pushNotificationConfig as Record<string, unknown>;
+      if (typeof pnConfig.url !== 'string' || !pnConfig.url.startsWith('http')) {
+        return res.status(400).json(buildRichError('pushNotificationConfig.url must be a valid HTTP(S) URL', ErrorCode.INVALID_INPUT));
+      }
+
+      const configId = `pnc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const pn: TaskPushNotificationConfig['pushNotificationConfig'] = {
+        url: pnConfig.url as string,
+      };
+      if (typeof pnConfig.token === 'string') {
+        pn.token = pnConfig.token;
+      }
+      if (pnConfig.authentication && typeof pnConfig.authentication === 'object') {
+        pn.authentication = pnConfig.authentication as TaskPushNotificationConfig['pushNotificationConfig']['authentication'];
+      }
+      const config: TaskPushNotificationConfig = {
+        id: configId,
+        taskId: taskId as string,
+        pushNotificationConfig: pn,
+      };
+
+      setPushNotificationConfig(config);
+      res.status(201).json(config);
+    });
+
+    // GET /tasks/:id/pushNotificationConfigs — list configs
+    this.app.get('/tasks/:taskId/pushNotificationConfigs', taskAuthMiddleware, (req: Request, res: Response) => {
+      const configs = listPushNotificationConfigs(String(req.params.taskId));
+      res.json(configs);
+    });
+
+    // GET /tasks/:id/pushNotificationConfigs/:configId — get single config
+    this.app.get('/tasks/:taskId/pushNotificationConfigs/:configId', taskAuthMiddleware, (req: Request, res: Response) => {
+      const config = getPushNotificationConfig(String(req.params.taskId), String(req.params.configId));
+      if (!config) {
+        return res.status(404).json(buildRichError('Push notification config not found', ErrorCode.NOT_FOUND));
+      }
+      res.json(config);
+    });
+
+    // DELETE /tasks/:id/pushNotificationConfigs/:configId — delete config
+    this.app.delete('/tasks/:taskId/pushNotificationConfigs/:configId', taskAuthMiddleware, (req: Request, res: Response) => {
+      const deleted = deletePushNotificationConfig(String(req.params.taskId), String(req.params.configId));
+      if (!deleted) {
+        return res.status(404).json(buildRichError('Push notification config not found', ErrorCode.NOT_FOUND));
+      }
+      res.json({ success: true });
+    });
   }
 
   /**
@@ -1598,6 +1692,8 @@ export class BridgeServer {
         if (didIdentity) {
           this.recordTrust(didIdentity.did, result);
         }
+        // Dispatch push notifications to registered webhooks
+        this.dispatchPushNotifications(task.taskId, result);
         return result;
       },
       cancelTask: (taskId) => this.cancelTaskById(taskId),
@@ -1657,6 +1753,57 @@ export class BridgeServer {
     } catch (error) {
       console.error(`[Bridge] ${label} failed to confirm delivery on-chain after 5 attempts:`, error);
     }
+  }
+
+  /**
+   * Dispatch push notifications for a completed task.
+   * POSTs the task status/result to all configured webhook URLs with exponential backoff retry.
+   * Fires asynchronously — does not block task completion.
+   */
+  private async dispatchPushNotifications(taskId: string, result: TaskResult): Promise<void> {
+    const configs = getConfigsForTask(taskId);
+    if (configs.length === 0) return;
+
+    const a2aTask = taskResultToA2ATask(taskId, result);
+    const payload = JSON.stringify(a2aTask);
+
+    const dispatches = configs.map(async (config) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (config.pushNotificationConfig.token) {
+        headers['Authorization'] = `Bearer ${config.pushNotificationConfig.token}`;
+      }
+
+      try {
+        await retryWithBackoff(
+          async () => {
+            const resp = await fetch(config.pushNotificationConfig.url, {
+              method: 'POST',
+              headers,
+              body: payload,
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (!resp.ok) {
+              throw new Error(`Webhook returned ${resp.status}`);
+            }
+          },
+          {
+            maxAttempts: 3,
+            baseDelayMs: 1000,
+            onRetry: (attempt, err) => {
+              console.warn(`[Bridge] Push notification retry ${attempt}/2 for task ${taskId} -> ${config.pushNotificationConfig.url}: ${err.message}`);
+            },
+          },
+        );
+        console.log(`[Bridge] Push notification sent for task ${taskId} -> ${config.pushNotificationConfig.url}`);
+      } catch (error) {
+        console.error(`[Bridge] Push notification failed for task ${taskId} -> ${config.pushNotificationConfig.url}:`, error);
+      }
+    });
+
+    await Promise.allSettled(dispatches);
+    cleanupPushNotificationConfigs(taskId);
   }
 
   /**
@@ -1798,6 +1945,9 @@ export class BridgeServer {
     // SSE streaming support (A2A v1.0.0)
     capabilities.streaming = true;
 
+    // Push notifications support (A2A v1.0.0)
+    capabilities.pushNotifications = true;
+
     // Declare AgoraMesh extensions
     if (!capabilities.extensions) {
       capabilities.extensions = [
@@ -1897,6 +2047,19 @@ export class BridgeServer {
       };
     }
 
+    // Extended capabilities visible only to authenticated clients
+    const extCaps = (card as Record<string, unknown>).capabilities as Record<string, unknown>;
+    extCaps.pushNotifications = true;
+    extCaps.multiTurnConversations = true;
+    extCaps.taskCancellation = true;
+
+    // Additional skills visible only to authenticated clients
+    const skills = (card as Record<string, unknown>).skills as Array<Record<string, unknown>>;
+    skills.push(
+      { id: 'priority-execution', name: 'Priority Execution', description: 'Tasks from authenticated clients are prioritized in the execution queue.' },
+      { id: 'extended-output', name: 'Extended Output', description: 'No output length cap for authenticated clients (free tier is limited to 2000 chars).' },
+    );
+
     return card;
   }
 
@@ -1923,6 +2086,8 @@ export class BridgeServer {
 - Get task (A2A): GET ${baseUrl}/tasks/{taskId}
 - Cancel task (A2A): POST ${baseUrl}/tasks/{taskId}:cancel
 - Subscribe task (A2A): POST ${baseUrl}/tasks/{taskId}:subscribe
+- Push notification configs: POST/GET ${baseUrl}/tasks/{taskId}/pushNotificationConfigs
+- Push notification config: GET/DELETE ${baseUrl}/tasks/{taskId}/pushNotificationConfigs/{configId}
 - Sandbox (no auth): POST ${baseUrl}/sandbox
 
 ## Authentication (simplest first)
@@ -1975,7 +2140,8 @@ Optional: \`taskId\` (auto-generated), \`clientDid\` (auto-filled from auth), \`
     return new Promise((resolve) => {
       this.server.listen(port, host, () => {
         const actualPort = this.getPort();
-        console.log(`[Bridge] Server running on http://${host}:${actualPort}`);
+        const protocol = this.config.tls ? 'https' : 'http';
+        console.log(`[Bridge] Server running on ${protocol}://${host}:${actualPort}`);
         console.log(`[Bridge] Agent: ${this.config.name}`);
         console.log(`[Bridge] Skills: ${this.config.skills.join(', ')}`);
         console.log(`[Bridge] Price: ${this.config.pricePerTask} USDC per task`);

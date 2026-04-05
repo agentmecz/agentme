@@ -20,6 +20,8 @@ export interface McpHttpHandlerOptions {
   maxBodySize?: number;
   /** Allowed Origin headers for DNS rebinding protection. Comma-separated. Defaults to localhost origins. */
   allowedOrigins?: string;
+  /** PEM-encoded CA certificate for verifying internal service TLS certs */
+  tlsCa?: Buffer;
 }
 
 /** Default maximum body size: 1MB */
@@ -49,7 +51,7 @@ function parseAllowedOrigins(origins: string): Set<string> {
 }
 
 export function createMcpRequestHandler(options: McpHttpHandlerOptions) {
-  const { nodeUrl, bridgeUrl, publicUrl = 'https://api.agoramesh.ai', authToken, corsOrigin, maxBodySize, allowedOrigins } = options;
+  const { nodeUrl, bridgeUrl, publicUrl = 'https://api.agoramesh.ai', authToken, corsOrigin, maxBodySize, allowedOrigins, tlsCa } = options;
   const MAX_BODY_SIZE = maxBodySize ?? DEFAULT_MAX_BODY_SIZE;
 
   // DNS rebinding protection: parse allowed origins
@@ -216,7 +218,7 @@ export function createMcpRequestHandler(options: McpHttpHandlerOptions) {
           }
 
           // New session: create server + transport
-          const mcpServer = createServer({ nodeUrl, bridgeUrl });
+          const mcpServer = createServer({ nodeUrl, bridgeUrl, tlsCa });
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (id) => {
